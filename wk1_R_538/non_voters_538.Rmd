@@ -1,0 +1,53 @@
+---
+title: "Week 1: Loading and Subsetting Data"
+author: "Ethan Haley"
+date: "2/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Overview of [FiveThirtyEight's article exploring why people don't vote](https://projects.fivethirtyeight.com/non-voters-poll-2020-election/)
+
+This article, using polling data gathered 49-39 days before the latest U.S. presidential election, in which the highest percentage of eligible voters sine 1900 actually voted, takes a look at why non-voters may choose or need to remain on the sidelines.  Presumably the conclusions drawn from this type of study could be used to help create policies that lessen the pull of whatever it is that's holding these people back, but the darker undercurrent is the fact that there's a significant proportion of policy-makers interested in exacerbating these problems.
+
+The data come from a carefully selected group of voting age Americans with proven voting histories, chosen and weighted to approximate the general population.  Also some respondents with no voting histories who expressly stated not voting in the past are included, to represent a typical mix of voters and non-voters.  Here's how this group's track record breaks down:
+
+```{r echo=FALSE}
+
+dataUrl <- "https://raw.githubusercontent.com/ebhtra/msds-607/main/wk1_R_538/non-voters/nonvoters_data.csv"
+
+noVotes <- read.csv(url(dataUrl))
+# rearrange the categories in their natural order
+noVotes$voter_category <- factor(noVotes$voter_category, levels = c('rarely/never', 'sporadic', 'always'))
+barplot(table(noVotes$voter_category), main = "Voting History of Respondents", ylab = "Count of People")
+```
+
+If the largest group, who votes sporadically, divides somewhat evenly between the other two groups in any given year, this is a typical group of people, since about 50-60% of eligible voters have voted in each general election since 1900.
+
+
+### When people don't vote, what are their reasons?
+
+```{r}
+# leave out most of the demographic info and put names on the rest
+# based on the "nonvoters_codebook.pdf" that accompanies these data
+oldcols <- c("Q2_1", "Q2_2", "Q2_3", "Q2_4", "Q2_5", "Q2_6", "Q2_7", "Q2_8", "Q2_9", "Q2_10", "Q5", "Q8_1", "Q8_2", "Q8_3", "Q8_4", "Q8_5", "Q8_6", "Q8_7", "Q8_8", "Q8_9", "Q17_1", "Q17_2", "Q17_3", "Q17_4", "Q18_1", "Q18_2", "Q18_3", "Q18_4", "Q18_5", "Q18_6", "Q18_7", "Q18_8", "Q18_9", "Q18_10", "Q20", "Q21", "Q22", "Q26", "Q29_1", "Q29_2", "Q29_3", "Q29_4", "Q29_5", "Q29_6", "Q29_7", "Q29_8", "Q29_9", "Q29_10", "Q30", "voter_category")
+newcols <- c("good_Am_vote", "good_Am_jury", "good_Am_politics", "good_Am_flag", "good_Am_census", "good_Am_Pledge", "good_Am_military", "good_Am_respect_opp", "good_Am_God", "good_Am_protest", "winner_matters", "trust_prez", "trust_congr", "trust_court", "trust_CDC", "trust_elec_offic", "trust_FBI", "trust_media", "trust_police", "trust_postal", "trust_machine", "trust_paper", "trust_mail", "trust_e-vote", "problem_ID", "prob_find_poll", "prob_deadline", "prob_access", "prob_ballot_help", "prob_provisional", "prob_work", "prob_long_line", "prob_name_list", "prob_absentee", "registered", "plan_to_vote", "why_not_voting", "voting_history", "disliked_cands", "geoloc_nullified", "no_effect_on_me", "broken_system", "tried_but_failed", "unsure_eligible", "irrelevant_issues", "all_cand_same", "opposed_to_voting", "other", "party", "voter_category")
+
+noVotes <- noVotes[oldcols]
+colnames(noVotes) <- newcols
+
+# convert 1=yes and 2=no into booleans 1=T and 2=F, for appropriate columns
+yes_no <- c("winner_matters", "problem_ID", "prob_find_poll", "prob_deadline", "prob_access", "prob_ballot_help", "prob_provisional", "prob_work", "prob_long_line", "prob_name_list", "prob_absentee", "registered")
+noVotes[yes_no] <- lapply(noVotes[yes_no], function(x) as.logical(abs(x-2)))
+# convert plan_to_vote to factor, discarding the unanswereds (-1's)
+noVotes$plan_to_vote <- factor(noVotes$plan_to_vote, levels = c(1:3), labels = c("Yes", "No", "Maybe"))
+# factorize party affiliation col
+noVotes$party <- factor(noVotes$party, levels = c(1:5), labels = c("Rep", "Dem", "Ind", "Other", "NoPref"))
+
+```
+
+
+
