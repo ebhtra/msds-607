@@ -1,0 +1,32 @@
+-- how many lifts will get you to each run,
+   -- and what is the level of that run
+   
+WITH liftcount AS
+(SELECT name, COUNT(name), level
+	FROM access 
+	INNER JOIN runs
+	ON (access.run = runs.id)
+	GROUP BY name, level)
+SELECT name AS run, count AS ways_there, symbol
+	FROM liftcount
+	INNER JOIN difficulty
+	USING(level)
+	ORDER BY ways_there DESC;
+
+— saved as waysToRuns.csv
+
+
+
+
+-- which runs does each lift access?
+  -- Add in more details about the lift and the run
+     -- for easier analysis in RStudio.
+
+SELECT lifts.name AS lift, vertical, seats, runs.name AS run, level
+	FROM lifts
+	INNER JOIN access
+	ON (lifts.id = access.lift)
+	INNER JOIN runs
+	ON (access.run = runs.id);
+	
+— saved as lift-run-combos.csv

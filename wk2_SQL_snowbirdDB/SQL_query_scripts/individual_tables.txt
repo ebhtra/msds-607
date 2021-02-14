@@ -1,0 +1,32 @@
+-- lifts table, in order of last chair
+
+SELECT id, name AS lift, vertical AS vert_feet, seats, closes AS last_chair
+	FROM lifts
+	ORDER BY last_chair;
+
+
+	
+-- access table, ordered by lift
+
+SELECT * FROM access
+	ORDER BY lift;
+
+
+— people table, ordered by sport
+
+SELECT * FROM people
+	ORDER BY sport;
+
+-- sport table
+
+SELECT * FROM sport;
+
+-- runs table
+
+SELECT * FROM runs
+	ORDER BY level;
+
+-- difficulty table
+
+SELECT * FROM difficulty;
+
