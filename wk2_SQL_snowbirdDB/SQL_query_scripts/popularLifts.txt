@@ -1,0 +1,22 @@
+-- which lifts are most popular and how hard are their runs?
+
+WITH popular AS 
+	(SELECT lifts.name AS lift, COUNT(*) AS votes
+	FROM lifts 
+	INNER JOIN people
+	ON lifts.id = people.favelift
+	GROUP BY lift)
+SELECT popular.votes, popular.lift, avg_difficulty
+	FROM popular
+	INNER JOIN
+	(SELECT l.name AS lift, ROUND(AVG(r.level), 2) AS avg_difficulty
+	FROM lifts l 
+	RIGHT JOIN access a
+	ON (l.id = a.lift)
+	LEFT JOIN runs r 
+	ON (r.id = a.run)
+	GROUP BY l.name) run_levels
+	ON popular.lift = run_levels.lift
+	ORDER BY popular.votes DESC;
+
+— saved to popularLifts.csv
