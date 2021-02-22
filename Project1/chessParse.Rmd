@@ -1,0 +1,190 @@
+---
+title: "Project 1 for 607"
+author: "Ethan Haley"
+date: "2/21/2021"
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(glue)
+library(dplyr)
+library(tidyverse)
+```
+
+## Transform a text representation of a chess tourney and extract info we want
+
+```{r}
+# Check the format of the input file
+tourney <- read.csv("../Project1/tournamentinfo.txt", nrows = 7)
+tourney
+```
+
+###   The task here
+#####  
+We just want to get the player names, states, points, and ratings, and keep track of who they played.  The rest of the printout above is just noise, for our purposes here.  The two approaches that occur to me, to accomplish the task, are
+
+1) Spend some time parsing the file into a sensible and clean ```data.frame```, and then use frame operations to calculate the desired output, or
+
+2) Keep the table exactly as read in by the ```read.csv``` defaults, and use ```regex``` and whatever regular structure the messy table provides us to pick out the details we need.
+
+Since we've recently been focusing on ```regex```, I'm going to go with the second option....
+
+#### Explore the structure
+#####  
+```{r}
+tourney <- read.csv("../Project1/tournamentinfo.txt", header = FALSE, skip = 2)
+names <- tourney %>% filter(row_number() %% 3 == 0)
+head(names, n=4)
+glue("{dim(names)[1]} player names")
+```
+#### We need just the name, points won, and opponents from those rows.
+#### Names:
+#####  
+```{r}
+extract_name <- function(string) {
+  step1 <- str_match(string, "\\|[a-zA-Z -]+\\|")
+  str_remove_all(step1, "\\|\\s*|\\s*\\|")
+}
+extract_name(names[4,])
+```
+
+#### Points:
+#####
+```{r}
+pull_points <- function(string) {
+  step1 <- str_match(string, "\\|[0-9\\.]+")
+  as.numeric(str_remove(step1, "\\|"))
+}
+pull_points(names[4,])
+```
+
+
+
+##### Opponents:
+#####   
+```{r}
+get_opps <- function(string) {
+  step1 <- str_match_all(string, "\\b[WDL] *[0-9]+\\b")
+  f <- function(s){as.numeric(str_remove(s, "[WDL]\\s*"))}
+  sapply(step1, f)
+}
+as.vector(get_opps(names[4,]))
+```
+
+#### And now we need homes and pre-rankings from the other rows  
+#####    
+```{r}
+ranks <- tourney %>% filter(row_number() %% 3 == 1)
+head(ranks, n=5)
+glue("{dim(ranks)[1]} player rankings")
+```
+##### We just want the first 2 letters plus the "Pre" part of that, and that first line will throw off a lot of things, so let's start by removing it.
+#
+```{r}
+ranks <- ranks %>% filter(row_number() > 1) 
+# other subsetting is changing d.f to strings(??)
+from <- function(string) {
+  str_match(string, "[A-Z]+")
+}
+
+get_ranks <- function(string) {
+  step1 <- str_match(string, " R:\\s*[0-9]+")
+  as.numeric(str_remove_all(step1, " R:\\s*"))
+}
+from(ranks[4,])
+get_ranks(ranks[4,])
+```
+
+##### With players connected to their rankings, we can now substitute opponents with their rankings and find means.
+#
+```{r}
+meanranks <- function(opplist, rankvec) {
+  # for each opponent list, map to avg ranking in list
+  opplist <- map(opplist, function(x){round(mean(rankvec[x], 0))})
+  unlist(opplist)
+}
+```
+
+
+### Now build a frame that has what we need, using those 6 functions, because the required output is a .csv
+#
+```{r}
+players <- extract_name(names$V1)
+points <- pull_points(names$V1)
+opponents <- get_opps(names$V1)
+from <- from(ranks$V1)
+rankings <- get_ranks(ranks$V1)
+oppranks <- meanranks(opponents, rankings)
+
+chess <- data.frame(player = players, home = from, points = points,
+                    prerank = rankings, opp_ranks = oppranks)
+chess
+```
+#### In summary, the routine starts with the above components, and ends with a ```.csv``` output, which can all be encapsulated as follows:
+#####
+```{r}
+text2csv <- function(tourneyFile, toFile) {
+  # read in the textfile, which of course has to be formatted exactly like ours:)
+  tourney <- read.csv(tourneyFile, header = FALSE, skip = 2)
+  # subset the names rows
+  names <- tourney %>% filter(row_number() %% 3 == 0)
+  #----helper functions for name rows-----
+  extract_name <- function(string) {
+    step1 <- str_match(string, "\\|[a-zA-Z -]+\\|")
+    str_remove_all(step1, "\\|\\s*|\\s*\\|")
+  }
+  pull_points <- function(string) {
+    step1 <- str_match(string, "\\|[0-9\\.]+")
+    as.numeric(str_remove(step1, "\\|"))
+  }
+  get_opps <- function(string) {
+    step1 <- str_match_all(string, "\\b[WDL] *[0-9]+\\b")
+    f <- function(s){as.numeric(str_remove(s, "[WDL]\\s*"))}
+    sapply(step1, f)
+  }
+  # subset ranking rows
+  ranks <- tourney %>% filter(row_number() %% 3 == 1)
+  # remove header
+  ranks <- ranks %>% filter(row_number() > 1) 
+  #----helper funcs for ranking rows------
+  from <- function(string) {
+    str_match(string, "[A-Z]+")
+  }
+  get_ranks <- function(string) {
+    step1 <- str_match(string, " R:\\s*[0-9]+")
+    as.numeric(str_remove_all(step1, " R:\\s*"))
+  }
+  meanranks <- function(opplist, rankvec) {
+    # for each opponent list, map to avg ranking in list
+    opplist <- map(opplist, function(x){round(mean(rankvec[x], 0))})
+    unlist(opplist)
+  }
+  # build the frame
+  players <- extract_name(names$V1)
+  points <- pull_points(names$V1)
+  opponents <- get_opps(names$V1)
+  from <- from(ranks$V1)
+  rankings <- get_ranks(ranks$V1)
+  oppranks <- meanranks(opponents, rankings)
+  
+  chess <- data.frame(player = players, home = from, points = points,
+                      prerank = rankings, opp_ranks = oppranks)
+  # Output to csv
+  write_csv(chess, toFile)
+}
+```
+
+##### Test if it works:
+#####
+```{r}
+infile = "../Project1/tournamentinfo.txt"
+tempfile = "tmp.csv"
+text2csv(infile, tempfile)
+chess <- read_csv(tempfile)
+chess
+```
+
