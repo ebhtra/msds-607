@@ -1,0 +1,112 @@
+---
+title: "Flight Delays"
+author: "Ethan Haley"
+date: "3/6/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
+```
+#
+## PART 1:  Tidy a csv table
+#####
+```{r}
+(flts <- read.csv('FlightTimes.csv'))
+```
+#
+#### Make those blank fields NA's
+#####
+```{r}
+(flts <- read.csv('FlightTimes.csv', na.strings = ""))
+```
+#
+#### Remove the NA row and fill the airline names into all rows
+#####
+```{r}
+(flts <- flts %>% 
+   fill('X') %>% 
+   drop_na())
+```
+#
+#### Name first 2 columns and pivot destinations
+#####
+```{r}
+# Give the first 2 cols names
+flts <- rename(flts, Carrier = X, Status = X.1)
+# Tidy
+flts <- pivot_longer(flts, Los.Angeles:Seattle, names_to = 'Destination',
+                      values_to = 'Count')
+head(flts)
+```
+#
+#### Remove dots from Destination names
+#####
+```{r}
+flts$Destination <- sapply(flts$Destination, function(x) {gsub('\\.', ' ', x)})
+head(flts)
+```
+#
+## PART 2:  Analyze ==> Compare the arrival delays for the two airlines
+###
+```{r}
+# First instinct is to group the flights by delays and carriers: 
+
+ontimeAK <- flts %>% filter(Carrier == 'ALASKA' & Status == 'on time')
+delayedAK <- flts %>% filter(Carrier == 'ALASKA' & Status == 'delayed')
+ontimeAW <- flts %>% filter(Carrier != 'ALASKA' & Status == 'on time')
+(delayedAW <- flts %>% filter(Carrier != 'ALASKA' & Status == 'delayed'))
+```
+#
+##### Unless I'm only interested in a particular destination, my first thought when analyzing delays by airline is to see which airline has the highest ratio of on-time flights to delayed flights.  
+#####
+```{r}
+cat("AM WEST's on-time/delayed ratio to these destinations was",
+    round(sum(ontimeAW$Count) / sum(delayedAW$Count), 2), 
+    "\nwhile ALASKA's was slightly worse, at",
+    round(sum(ontimeAK$Count) / sum(delayedAK$Count), 2))
+```
+
+##### While the overall ratio is ~ 25% better for AM WEST, it's not a sizeable enough difference that I'd use it as a measure for some kind of presentation or important decision.  Probably it will be much more interesting to inspect the ratios for the individual destinations.  For example, just glancing at the AM WEST delays displayed above, you can see that Phoenix has 415 delays where Seattle and San Diego each have less than 1/6 that number.  Whether that's just a function of the overall numbers of AM WEST flights to the respective destinations, or whether there's a marked difference in on-time ratios, either way an analysis of the individual ratios will show something important pertaining to the overall stat calculated above. 
+
+##### But after breaking down the data into 4 tidy subsets above, it becomes clear that the one ratio of interest here, on-time vs. delayed, is harder to calculate once we've split the data into separate rows for on-time and delayed counts.   
+##### Rather than 20 rows of Carrier | Status | Destination | Count, it seems like what we're after is 10 rows of Carrier | Destination | Ratio | TotalCount, where the TotalCount is the sum of the 2 counts that will get condensed into 1 new row, for each Carrier/Destination combo, and the Ratio will be calculated from those same 2 counts.  This is actually just as tidy, considering our purposes, i.e. what we consider "one observation".  For us, an observation isn't the status of one flight, it's the on-time/delayed ratio of one airline going to one destination.  The reason we need to keep the TotalCount for each of those observations is so that we can put each ratio into meaningful perspective.
+#
+```{r}
+# pivot back out the Status column and calculate the needed vars
+(new_flts <- flts %>% 
+  pivot_wider(names_from = Status, values_from = Count) %>%
+  transmute(Carrier, Destination, Ratio = `on time` / delayed, 
+            TotalFlts = `on time` + delayed))
+```
+#####
+##### The fact that this new version of our data contains a ratio column makes it seem untidy, but armed with that ratio and with the total number of flights per carrier/destination combo, it actually encodes all the info from the original csv, in the most compact form possible.  
+#####
+```{r, warning=FALSE}
+ggplot(new_flts, aes(x=Destination, y=Ratio, fill=Carrier,
+                     width = TotalFlts/3333)) + 
+  geom_bar(stat = 'identity') + 
+  theme(panel.grid.major = element_blank(),
+        panel.background = element_blank()) + 
+  ylab('On-Time / Late Ratio') +
+  theme(plot.title = element_text(hjust = 0.6)) + 
+  ggtitle('Bar Width Proportional to Number of Flights')
+```
+  
+
+#####  That's a really nice example of [Simpson's Paradox](https://en.wikipedia.org/wiki/Simpson%27s_paradox)
+#####  since ALASKA has a better ratio into every destination, yet we saw that AM WEST wins the overall ratio.  The widths of the bars above show us very clearly how this happens, since they're proportional to the total number of flights per carrier/destination combo.  In short, Phoenix is the easiest airport to fly into, and AM WEST sends the vast majority of their flights there.  ALASKA, meanwhile focuses on Seattle, where it's apparently much harder to land on-time.  
+
+##### So which carrier would you choose?  All other things being equal, you'd want to fly ALASKA, although clearly all other things aren't equal, since AM WEST is going to offer you a lot more flight times into Phoenix, and with 12 times more flights arriving on-time than late there, you have a pretty good chance of succeeding.  
+
+#  
+#### =========================================================================================
+# 
+
+
+
+
