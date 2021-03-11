@@ -1,0 +1,286 @@
+---
+title: "DS in Context"
+author: "Ethan Haley"
+date: "3/4/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Let's compare how similar our names are!  But how?
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(kableExtra)
+```
+
+```{r}
+people <- c('ZuJe', 'ZegRcad', 'SliaDne',
+              'SollKnn', 'SnhTg', 'SnhRmia', 'SamDea', 
+              'SsdaaRtih', 'SfrZcay', 'RdiuzEcie',
+              'ReeSme', 'OesHny', 'NtTiht',
+              'MsoDne', 'MyrCar', 'MLuhiEa', 
+              'MrieGbila','LccMthw', 'IlmMla', 
+              'IpltMcal', 'HmelJsu', 'HrcEi',
+              'HrasBa', 'HlyEhn', 'GedagJra', 
+              'GnroMrAeada', 'GtcPdo',
+              'FaknegTlr', 'FruoCril', 'CseCsada', 
+              'CnolJsp', 'CniSa', 'CaVc',
+              'CmoGbil', 'BrsvDiry', 'AaaoEtbn')
+length(people)
+```
+
+```{r}
+kbl(data.frame('people' = people))
+```
+
+```{r}
+knitr::include_graphics('alphabetWheel.png')
+```
+\cite{alphabet wheel image from kodlogs.com}  
+
+
+#  Idea: Use a Manhattan-type score for name pairs.
+
+### $d_{Manhattan}(X, Y) = \mid\mid X - Y \mid\mid _{1}$  
+
+### $= \mid x_{1}-y_{1}\mid + \mid x_{2}-y_{2}\mid + \cdot\cdot\cdot$
+
+### Using the wheel as a model of distance, convert the names to lowercase, start with the first letters in each name pair, see how far apart they are on the wheel, and take the average of the distances for each letter pair, to better compare varying lengths.  
+#### name_1: ReeSme
+#### name_2: OesHny
+## dist(R, O) = 3, dist(e, e) = 0, etc.  
+
+### Start by converting letters to integers, to make the math easier
+#####
+```{r}
+# Input a word of mixed-case letters, output a vector of 1-52 equivs, 
+##  optionally lower-cased with second parameter
+string2nums <- function(string, makeLower = FALSE) {
+  chars <- unlist(strsplit(string, ''))
+  nums <- lapply(chars, function(ch){match(ch, c(letters, LETTERS))})
+  nums <- as.numeric(nums)
+  if (makeLower) {nums <- nums %% 26}
+  nums
+}
+cat("Convert 'HlyEhn' to integers: ", string2nums('HlyEhn', makeLower = T))
+```
+###
+### Find the distance between any pair of letters
+#####
+```{r}
+# how far apart are 2 letters on a wheel?
+#  Inputs are 2 integers from 1-26, representing a-z, or A-Z
+#  Image taken from https://kodlogs.com/blog/618/alphabet-wheel
+cycleDist <- function(letternum1, letternum2) {
+  d <- letternum1 - letternum2
+  if (d > 0) {
+    d <- min(d, letternum2 + 26 - letternum1)
+  } else if (d < 0) {
+    d <- min(-d, letternum1 + 26 - letternum2)
+  }
+  d
+}
+c(cycleDist(1,1), cycleDist(3,22), cycleDist(48,29), cycleDist(5,19))
+```
+####
+# Try it out with 'ReeSme' and 'OesHny'
+#####
+```{r}
+total <- 0
+name1 <- string2nums('ReeSme', makeLower = T)
+name2 <- string2nums('OesHry', makeLower = T)
+for (i in 1:length(name1)) {
+  total <- total + cycleDist(name1[i], name2[i])
+}
+cat("'ReeSme' and 'OesHry' have an average distance of",
+    round(total / length(name1), 2), "per letter pair.")
+```
+#
+##  Problem:  What does this really mean?  Are "p" and "q" actually 7 times more similar than "p" and "i"? 
+##  Problem:  What about names that have different lengths?
+### ---------------------------------------------------
+#  Much Better Idea:  Use other distance metrics  
+#  
+## $d_{Jaccard}(X, Y) = 1 - \frac{\mid X \cap Y \mid}{\mid X \cup Y \mid}$
+
+```{r}
+#jaccard can compare strings directly, without converting to ints
+jaccard <- function(string1, string2) {
+  set1 <- unique(unlist(strsplit(string1, '')))
+  set2 <- unique(unlist(strsplit(string2, '')))
+  1 - length(intersect(set1, set2)) / length(union(set1, set2))
+}
+cat("'carjacked' and 'jaccard' have a jaccard distance of", jaccard('carjacked', 'jaccard'))
+```
+#####
+### X = 'carjacked', Y = 'jaccard'  
+### $\frac{\mid carjacked  \cap  jaccard \mid}{\mid carjacked  \cup  jaccard \mid}$
+### $= \frac{\mid (c, a, r, j, d) \mid}{\mid (c, a, r, j, d, e, k) \mid}$  
+### $= \frac{5}{7}$
+### That's their similarity, so their distance is 1 - that, as calculated before.
+
+## $d_{cosine}(X, Y) = 1 - \frac{X \cdot Y}{\mid\mid X\mid\mid_{2}\cdot\mid\mid Y\mid\mid_{2}}$
+
+### X = 'bad dad'
+### Y = 'cabbed'
+
+### $X = < 2, 1, 0, 3, 0, 0, ... >$
+### $Y = < 1, 2, 1, 1, 1, 0, ... >$
+
+### $d_{cosine}(X, Y) = 1 - \frac{< 2, 1, 0, 3, 0, 0, ... > \cdot < 1, 2, 1, 1, 1, 0, ... >}{\sqrt{2^{2}+1^{2}+3^{2}}\cdot \sqrt{1^{2}+2^{2}+1^{2}+1^{2}+1^{2}}}$
+
+
+
+```{r}
+cosine <- function(string1, string2, len = 52) {
+  nums1 <- string2nums(string1)
+  nums2 <- string2nums(string2)
+  vec1 <- rep(0, len)
+  vec2 <- rep(0, len)
+  for (n in nums1) {
+    vec1[n] <- vec1[n] + 1
+  }
+  for (n in nums2) {
+    vec2[n] <- vec2[n] + 1
+  }
+  dot <- sum(vec1 * vec2)
+  mags <- sqrt(sum(vec1 * vec1)) * sqrt(sum(vec2 * vec2))
+  1 - dot / mags
+}
+```
+
+#
+
+```{r}
+findClosest <- function(stringlist, func) {
+  names <- stringlist  # just copy to initialize return values
+  scores <- rep(-1, length(stringlist))
+  for (i in 1:length(stringlist)) {
+    best <- Inf
+    name <- ""
+    string1 <- stringlist[i]
+    others <- stringlist[-c(i)]
+    for (other in others) {
+      score <- func(string1, other)
+      if (score < best){
+        best <- score
+        name <- other
+      }
+    }
+    names[i] <- name
+    scores[i] <- best
+  }
+  paste(stringlist, names, round(scores, 2))
+}
+```
+
+```{r}
+cosines <- findClosest(people, cosine)
+jaccards <- findClosest(people, jaccard)
+lowCosines <- findClosest(tolower(people), cosine)
+lowAdists <- findClosest(tolower(people), adist)
+```
+
+```{r}
+all_sims <- data.frame('People' = people, 'Jaccard' = jaccards,
+                       'Cosine' = cosines, 'LowerCosines' = lowCosines)
+all_sims %>%
+  kbl() %>%
+  kable_material_dark() %>%
+  row_spec(19:20, background = "#D7261E") # most similar title goes to...
+```
+#
+## What about preserving the order of the letters in the names?  At least the failed Manhattan distance gave some notion of that.
+##  
+## One solution:  Edit distance
+###  Focus of edit distance:  Alignment/sequence of letters matters.
+#### R does provide an edit distance function, `aDist`, in `utils`.
+#
+```{r}
+knitr::include_graphics('ninetyNineMice.png')
+```
+
+#
+
+```{r}
+all_adists <- data.frame('People' = people, 'Edit Distances' = lowAdists)
+all_adists %>%
+  kbl() %>%
+  kable_material_dark() %>%
+  row_spec(33, background = "#D7261E") # tie for most similar title goes to...
+```
+#
+# Problem:  Edit distance rewards short inputs too much.  What about different weightings? 
+
+```{r}
+knitr::include_graphics('keysPhoto.png')
+```
+
+#
+### Keyboard neighbors as weightings for penalties, to assist in spell-correcting, e.g.
+`a-neighbors: c('q','w','s','z')`,
+`b-neighbors: c('v', 'g', 'h', 'n')`,
+`c-neighbors: c('x', 'd', 'f', 'v')`,
+`d-neighbors: c('e', 'r', 'f', 'c', 'x', 's')`,
+`e-neighbors: c('w', 's', 'd', 'r')`,
+`...`,
+`z-neighbors: c('a', 's', 'x')`
+
+##### You can enter custom costs: `adist(str1, str2, costs = c(insert=1,delete=1,substitute=1.5))` but you can't enter a function to calculate a cost, e.g. based on whether the letter's in the neighbors list shown above.  If you want to implement your own edit distance metric for something like that (involving dynamic programming), I recommend this video:
+
+[Tim Roughgarden's dynamic programming video for sequence alignment, on Coursera](https://www.coursera.org/learn/algorithm-design-analysis-2/lecture/QJkyp/optimal-substructure)
+
+
+##### This week's chapter only mentions Levershtein metric for gene alignment, but Needleman-Wunsch score is more common, and helps with our names similarity here more.  Needleman-Wunsch scores +1 for every match, and -1 for any mismatch or skip. This will help the scores of longer names that actually match on some letters.  But we need to negate the score, to keep thinking "lower is more similar".
+
+```{r}
+#install.packages('NameNeedle')
+library(NameNeedle)
+n <- needles('fruocril', 'hrcei')
+-n[[1]]
+n[[2]]
+n[[3]]
+```
+
+```{r}
+findNeedles <- function(stringlist) {
+  names1 <- stringlist  # just copy to initialize return values
+  names2 <- stringlist
+  scores <- rep(-1, length(stringlist))
+  result <- c(names1, names2, scores)
+  myParams <- defaultNeedleParams
+  myParams$GAPCHAR <- '=' #the default asterisk triggers markdown in kable frames
+  for (i in 1:length(stringlist)) {
+    best <- -Inf
+    name1 <- ""
+    name2 <- ""
+    string1 <- stringlist[i]
+    others <- stringlist[-c(i)]
+    for (other in others) {
+      score <- needles(string1, other, myParams)
+      if (score[[1]] > best){
+        best <- score[[1]]
+        name1 <- score[[2]]
+        name2 <- score[[3]]
+      }
+    }
+    result[i*3-2] <- name1
+    result[i*3-1] <- name2
+    result[i*3] <- best * -1
+  }
+  result
+}
+```
+
+```{r}
+needlenames <- findNeedles(tolower(people))
+needy <- data.frame("People" = rep(people, each=3), "Levenshtein" = rep(lowAdists, each=3), "Needles" = needlenames)
+needy %>% 
+  kbl() %>% 
+  collapse_rows(columns = 1:2, valign = "top") %>%
+  kable_material_dark() %>%
+  row_spec(c(7:9,40:42,49:51,55:60,100:102), background = "#D7261E") # tie for most similar title goes to...
+```
+
+
