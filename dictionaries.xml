@@ -1,0 +1,70 @@
+<?xml version="1.0"? encoding="UTF-8"?>
+<dictionaries>
+	<dictionary>
+		<title>diccionario Salamanca de la lengua española</title>
+		<editors>
+			<editor>
+				<firstname>Pilar</firstname>
+				<lastnames>Peña Pérez</lastnames>
+			</editor>
+			<editor>
+				<firstname>María</firstname>
+				<lastnames>del Rosario Calderón Soto</lastnames>
+			</editor>
+			<editor>
+				<firstname>Mercedes</firstname>
+				<lastnames>Esteban García</lastnames>
+			</editor>
+		</editors>
+		<year>2002</year>
+		<langs>
+			<lang>spanish-spanish</lang>
+		</langs>
+		<edition>6</edition>
+	</dictionary>
+	<dictionary>
+		<title>American Heritage Dictionary</title>
+		<editors>
+			<editor>
+				<firstname>Mark</firstname>
+				<lastnames>Boyer</lastnames>
+			</editor>
+			<editor>
+				<firstname>Pamela</firstname>
+				<lastnames>DeVinne</lastnames>
+			</editor>
+			<editor>
+				<firstname>Dolores</firstname>
+				<lastnames>Harris</lastnames>
+			</editor>
+		</editors>
+		<year>1991</year>
+		<langs>
+			<lang>english-english</lang>
+		</langs>
+		<edition>2</edition>
+	</dictionary>
+	<dictionary>
+		<title>Diccionari Escolar</title>
+		<editors>
+			<editor>
+				<firstname>Montserrat</firstname>
+				<lastnames>Martín Enrile</lastnames>
+			</editor>
+			<editor>
+				<firstname>Ferran</firstname>
+				<lastnames>Ballester Mateos</lastnames>
+			</editor>
+			<editor>
+				<firstname>Laia</firstname>
+				<lastnames>Cabal Guarro</lastnames>
+			</editor>
+		</editors>
+		<year>2007</year>
+		<langs>
+			<lang>catalan-spanish</lang>
+			<lang>spanish-catalan</lang>
+		</langs>
+		<edition>2</edition>
+	</dictionary>
+</dictionaries>
