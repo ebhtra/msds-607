@@ -1,0 +1,19 @@
+{"Dictionaries":[
+    {"title": "diccionario Salamanca de la lengua espa\u00f1ola",
+     "editors": ["Pilar Pe\u00f1a P\u00e9rez", "Mar\u00eda del Rosario Calder\u00f3n Soto", "Mercedes Esteban Garc\u00eda"],
+     "languages": ["spanish-spanish"],
+     "year": "2002",
+     "edition": "6"},
+    
+    {"title": "American Heritage Dictionary",
+     "editors": ["Mark Boyer", "Pamela DeVinne", "Dolores Harris"],
+     "languages": ["english-english"],
+     "year": "1991",
+     "edition": "2"},
+    
+    {"title": "Diccionari Escolar",
+     "editors": ["Montserrat Mart\u00edn Enrile", "Ferran Ballester Mateos", "Laia Cabal Guarro"],
+     "languages": ["catalan-spanish", "spanish-catalan"],
+     "year": "2007",
+     "edition": "2"}
+]}
