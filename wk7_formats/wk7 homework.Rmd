@@ -1,0 +1,60 @@
+---
+title: "wk7 - File formats"
+author: "Ethan Haley"
+date: "3/21/2021"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+## 3 ways of formatting information about dictionaries (books)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(XML)
+library(jsonlite)
+library(kableExtra)
+```
+
+### XML 
+
+```{r}
+#xmlParse('https://github.com/ebhtra/msds-607/blob/main/wk7_formats/dictionaries.xml')  # can't use https
+(xml2df <- xmlToDataFrame('dictionaries.xml'))
+```
+#####
+Nothing like a whole bunch of long Spanish names (That's only 3 editors per row)
+to highlight how this method works easily but needs some work afterwards to separate
+the children that are siblings.
+
+
+### html
+
+```{r}
+Url <- 'dictionaries.html'  # Again, https URL not working for this
+readHTMLTable(Url, encoding = "UTF-8")[[1]][,]
+```
+This one looks a lot nicer, but that's because I combined the editors and
+languages elements into one here, since html seemed to force me to, when I
+was constructing the table. 
+
+### json
+
+```{r}
+jd <- fromJSON("https://raw.githubusercontent.com/ebhtra/msds-607/main/wk7_formats/dictionaries.json")
+jd <- data.frame(jd)
+jd
+```
+Remove column prefixes ('Dictionary' was the outer dict in the JSON code)
+
+```{r}
+names(jd) <- sapply(names(jd), function(n){substring(n, 14)})
+kbl(jd)  # View doesn't knit so use kable to show lists
+```
+
+##### That JSON version is a little less clean, with the lists not unpacking automatically into the frame.  The XML library was nice, but it made it difficult to connect to an "https" URL.  Html had the same problem, at least for the methods I used.  It was cleaner, having been born in a tabular state, by problem definition.  It seemed sort of random which of the various methods for each format needed to have "UTF-8" encoding specified, for the Spanish accents, and some methods didn't even allow that.
+
+
+-------------------------------------------
+
