@@ -1,0 +1,106 @@
+---
+title: "NYTAPI"
+author: "EH"
+date: "4/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(httr)
+library(kableExtra)
+```
+
+### Notes from the Times API page:
+
+Pagination
+Use the offset query parameter to paginate thru the results, 25 comments at a time. Use offset=0 to get the first 25 comments, offset=25 to get the next 25 comments, ...
+
+The url.json endpoint returns top-level comments and the first three replies. The totalParentCommentsFound field has the total number of top-level comments. Use that to determine how many comments you need to paginate thru.
+
+In the comment node, the replyCount indicates how many replies there are to that top-level comment. If there are more than three, use the replies.json endpoint, the comment sequence and offset query parameter to paginate thru replies, 25 at a time.
+
+You can sort the comment list by newest first, oldest first, or comments with most reader recommendations first (sort=newest, oldest, or reader).
+
+Responses
+The Community API is RESTful. It uses response codes to indicate the API status (200 - OK, 401 - invalid key, 429 - rate limit reached, ...).
+
+### I'm only going to focus on the comments, not their replies here, since they don't belong in the same table.  I've included a function below for getting replies, using the commentID of the comment it replies to, if future development is desired.
+
+##### This routine begins with a NYT-provided api key, and uses it to query the `community` API for reader comments on articles.
+
+```{r echo=FALSE}
+apikey <- use your api key here
+```
+
+```{r}
+baseUrl <- 'https://api.nytimes.com/svc/community/v3/user-content/'
+comments <- 'url.json?api-key='
+replies <- 'replies.json?api-key='
+
+getComments <- function(strURL, comments_endpoint, offset=0) {
+  resp <- GET(paste(baseUrl, comments_endpoint, apikey, sep=''),
+           query = list(offset = offset, url = strURL))
+  content(resp, "parsed")
+}
+getReplies <- function(strURL, replies_endpoint, commentID, offset=0){
+  resp <- GET(paste(baseUrl, replies_endpoint, apikey, sep=''),
+              query = list(offset = offset, url = strURL,
+                           commentSequence = commID))
+  content(resp, "parsed")
+}
+commentFrame <- function(articleURL) {
+  # build a frame for the first page of results, if possible
+  c <- getComments(articleURL, comments)
+  # "upper level fail", for unspecified reasons
+  if (is.character(c)) {
+    print("API call failed")
+    return()
+  }
+  # "lower level fail", where at least there's some debugging help
+  if (c$status != "OK") {
+    print(c$errorDetails)
+    print('Offset was set to 0') # to help with debugging
+    return()
+  }
+  feats <- c('commentID', 'userID', 'userDisplayName', 'userLocation',
+             'commentBody', 'createDate', 'recommendations', 
+             'replyCount', 'editorsSelection', 'isAnonymous')
+  # append all comments here, one by one
+  frame <- data.frame()
+  for (comm in c$results$comments) {
+    frame <- rbind(frame, comm[feats])
+  }
+  # now add all the rest of the available pages
+  pagemax <- 25 # API limit per page
+  total_pages <- ceiling(c$results$totalParentCommentsFound / pagemax)
+  if (total_pages < 2) {return(frame)}
+  
+  for (p in 2:total_pages) {
+    Sys.sleep(6) # API limit is 10 calls per minute
+    c <- getComments(articleURL, comments, offset = (p-1) * 25)
+    if (c$status != "OK") {
+      print(c$errorDetails)
+      cat('Offset was set to ', (p-1) * 25) # to help with debugging
+      break
+    }
+    for (comm in c$results$comments) {
+      frame <- rbind(frame, comm[feats])
+    }
+  }
+  frame
+}
+```
+
+### Now use the above routine to build a frame of comments.  Needless to say, any headline that mentions racism will draw a lot of comments, so I'll demonstrate the routine using a recent story about "white fears" in towns where capitol rioters came from.
+
+```{r}
+whiteFearsURL <- 'https://www.nytimes.com/2021/04/06/us/politics/capitol-riot-study.html'
+whiteDF <- commentFrame(whiteFearsURL)
+```
+
+```{r}
+whiteDF %>%
+  kbl() %>%
+  kable_material_dark()
+```
