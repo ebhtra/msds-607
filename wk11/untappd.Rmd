@@ -1,0 +1,72 @@
+---
+title: "Untappd as a Recommender"
+author: "Ethan Haley"
+date: "4/20/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**Untappd**  
+
+[Untappd.com](https://untappd.com/home) is an app/website that plays an important role in the craft beer world.  Like Amazon.com, it serves manufacturers (breweries), vendors (bars/restaurants/stores), and consumers.  Consumers use the app for free, and in return they provide data for the app and the breweries and vendors who pay Untappd for professional services, such as automated menu updates.  The goldmine of data that app users provide comes in the form of "check-ins", in which users announce/log where they are, which beer they're drinking, and usually how they rate the beer, often including written reviews.  Untappd just notched its billionth check-in last month, to give you an idea of how popular it has been.  
+
+With nearly a billion beer ratings in hand, it's no surprise that Untappd has chosen to offer recommendations to its users.  But like most recommenders, this one has to be designed for a very specific scenario.  The only mention anywhere on Untappd.com about the workings of the recommender is under the "Privacy" topic, where they explain that they ask for the User's location so that they can make better recommendations for her.  Specific location is the single most important concern in recommending beers, unlike in recommending most other things.  
+
+
+**Why is location so important in this design scenario?**  
+
+Unlike consumers of mega-beers that are available anywhere you go, the Untappd user is generally interested in finding great craft beers, produced on a much smaller, more locally distributed scale, and often for a limited time only.  There's no point in training your recommender to know what type of IPA your User is apt to like, and then finding the perfect selection for her, if she has to fly 3000 miles to buy it.  And why tell her she should buy a product that got great ratings from users similar to her, if the brewer isn't going to release the next batch till next summer?  Ultimately, Users who need recommendations are staring at a dizzying array of unfamiliar beers at a store, or at a 3-page "Craft Beer" section of a menu at a bar or restaurant.  
+
+```{r echo=FALSE, out.width="50%", fig.cap='"Have you decided yet?"', fig.show='hold', fig.align='default'}
+knitr::include_graphics(c("untappdImages/croxley1.jpg", "untappdImages/croxley2.jpg"))
+```
+
+\clearpage
+
+In these scenarios, it's easy to imagine a consumer asking a waiter or store clerk what they'd recommend, but those people probably don't have as much information as the Untappd app has presumably gathered from the User's checkins.  I don't know exactly how Untappd generates recommendations, beyond allowing you to filter to within your desired distance radius, but they definitely are taking into account some version of your past check-ins, whether it's the rating you gave beers or at least the fact that you bought them to begin with.  This is apparent in my case because the dozens of beers they recommend to me are all IPA's, which is by far my favorite style of beer, and the one I've checked in on 95% of the time.  They also seem to have made the design decision to not re-recommend beers I've rated before, presumably because I already know if I like those or not.  I would actually rather see those in there, just to see where they rank with the other recommendations, to give me a sense of how much Untappd thinks I'll like their picks.
+
+Whatever Untappd's method for suggesting beers to me, it's very likely they are using some form of content-based filtering, where they find beers that are most similar, somehow, to ones that I've rated highest before.  When you check in for a beer, they provide you with a huge list of descriptors you can add for the beer, which is a great feature.  This allows users to state exactly what qualities they perceive in the beers ("lemony", "funky", "oily", "grassy", "dank", and hundreds more) while they're attaching their ratings to them.  This subjectiveness makes it much more clear exactly which traits a beer connoisseur appreciates most, and makes it easier for Untappd to find new beers to recommend, based on which of those descriptors other users have chosen for other beers.  
+
+**Speaking of other users...**
+
+It's not obvious to me whether Untappd relies on User-User collaborative filtering in their recommendations.  They definitely keep track of what your friends are rating, but I think they know better than to assume that means you'd want to try that beer too.  The idea for each user would be to find the group of users, within Untappd's millions, who have tried the highest number of the same beers as that user.  Then see which of that group has ratings that tend to deviate from a beer's mean rating, in the same direction as the user.  Then for those most similar users, find the beers they rated highest that the user hasn't tried yet and suggest them.  It also works well to find users in that group whose ratings have deviated in the opposite direction from the user of interest, and suggest beers they've disliked most, compared to other people.  
+
+The biggest problem with this similar user approach, in Untappd's case, is that for the similarities to carry any meaningful signal, the number of commonly rated beers between any pair of users has to be fairly high (think 25+), and even then the ratings have to deviate (from mean ratings) on the same beers, in a consistent direction.  It's not that it's unusual for users to have checked in on hundreds or thousands of beers over the years, but there are just so many beers out there, and constantly changing, that it becomes hard to find those user pairs, especially considering whatever pick Untappd produces has to be available near the User, and now.  While the recommendations come from within whatever radius you specify, Untappd seems to have determined availability based on if someone checked in recently within that radius.  If a user filters to a 5 mile radius from her location, the recommendations shown to her turn out to be unavailable for the most part, or at some other restaurant or store that she's not currently at.  Maybe someone checked in on this great beer, but the bar only had one small keg and it disappeared fast.  Or sometimes people bring back highly prized beers from distant places and check in locally with them, so that Untappd recommends them to everyone in that area, even though they can't actually buy them.
+
+**A better approach**  
+
+The only way to make this type of recommender useful is to start with the blackboard menu in front of the user, and tell him which of those beers he'll like best.  Unfortunately Untappd doesn't offer this crucial capability, but to be fair, no one else does either, as far as I know.  The app "Barly" tried it a couple of years ago, keeping track of which beers were for sale where, and having the User specify where he currently was, before making picks for him.  The breakdown came when stores/restaurants failed to constantly update their current offerings in the database, and Barly's crowdsourced user updates to the database understandably proved to be too annoying for the crowd to maintain with any meaningful level of accuracy. Turns out many people would rather just roll the dice on a beer and get back to talking to their friends, rather than doing data entry.  And from the bar's perspective, sure, they'd like for you to end up with a choice you love, but either way, they're making the sale. 
+
+
+```{r echo=FALSE, out.width="100%", fig.cap='Expensive to choose blindly'}
+knitr::include_graphics('untappdImages/beershelf.jpg')
+```
+
+
+Until Untappd develops some serious text-recognition-in-camera capabilities, to scan a crowded store shelf or menu, and immediately consider all the available choices to find the best, here's what I honestly think is the most useful recommendation tool they already provide:  Type in a few names that look promising, and compare their average ratings.  Ratings from dozens or hundreds of other users are a surprisingly accurate form of collaborative filtering.  The people who rated the beer, like you, decided that this beer, amongst all the other choices, was worth a shot, so they already share some latent similarities with you.  For example, maybe their price range is similar to yours, or the beer is local, and they share a geographic similarity with you, or they prefer beers made by the same brewers you prefer, or with similar types of hops. 
+
+Most importantly, I believe, is that the more ratings a beer has gotten, the "truer" the rating is.  Beer ratings are very noisy, given the circumstances of check-ins:  
+
+ - Modern IPA's tend to taste much better if they're fresh and have been refrigerated since creation, which is sadly not the usual case.  
+ - If the rater drank a different beer before the one being rated, it could send the rating in either direction, in addition to the alcohol dulling the rater's tastes.  
+ - Bars, and even moreso restaurants, are known to let the tap lines that the beer flows through get dirty and impart nasty flavors.  
+ - Food eaten with the beer can help or ruin a rating.  
+ - The particular temperature the beer happens to be served at makes a huge difference.  
+ - Glassware with soap residue ruins a beer.  
+ - Small batches of beer tend to vary from brewing to brewing. 
+ 
+And so on.  The point is that with all that noisiness, relying on the mean rating given by many other raters who have chosen the same beer as you can cancel out bi-directional noise and make for an effective recommender.  
+
+With the high prices and increasingly huge selection facing craft beer consumers, and the sector's growing popularity this century, it seems important for buyers, vendors, and brewers to make smart choices.  If you randomly choose a 4-pack on the shelf in front of you, you probably won't like it, and will be out $15-$30, perhaps opening Untappd to leave a bad rating. Instead, take a minute to see how it's rated by everyone else.  Untappd gets lots of ratings for a new beer the minute it hits shelves and menus, while it's fresh, likely from check-ins at bars and restaurants near you (since craft beers follow local distribution patterns).  
+
+**To get an idea of how standard recommender algorithms are applied to beers**  
+
+A small team of data science students built a web app that takes a static list of beers (the top-ranked 25 from each state) and uses ML techniques to produce recommendations, explicitly from either a content-based ("These highly rated beers are similar to beers you said you liked.") or user-user ("These beers are enjoyed by other people who liked the same beers you said you liked.") approach.  It's a nice effort by the creators, and uses a laundry list of sophisticated modern algorithms, combined with a huge number of reviews, but it highlights the inherent difficulties in a beer recommender:  The scrolldown list of beers to choose from represents only a tiny proportion of beers available, and is only relevant for a specific location at a specific time.  Nevertheless, fun to check out. [Ninkasi beer recommender](https://ninkasibeer.herokuapp.com/recom)
+
+--------------------------------------------------------  
+
