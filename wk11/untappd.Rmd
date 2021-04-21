@@ -3,8 +3,8 @@ title: "Untappd as a Recommender"
 author: "Ethan Haley"
 date: "4/20/2021"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -23,7 +23,7 @@ With nearly a billion beer ratings in hand, it's no surprise that Untappd has ch
 Unlike consumers of mega-beers that are available anywhere you go, the Untappd user is generally interested in finding great craft beers, produced on a much smaller, more locally distributed scale, and often for a limited time only.  There's no point in training your recommender to know what type of IPA your User is apt to like, and then finding the perfect selection for her, if she has to fly 3000 miles to buy it.  And why tell her she should buy a product that got great ratings from users similar to her, if the brewer isn't going to release the next batch till next summer?  Ultimately, Users who need recommendations are staring at a dizzying array of unfamiliar beers at a store, or at a 3-page "Craft Beer" section of a menu at a bar or restaurant.  
 
 ```{r echo=FALSE, out.width="50%", fig.cap='"Have you decided yet?"', fig.show='hold', fig.align='default'}
-knitr::include_graphics(c("untappdImages/croxley1.jpg", "untappdImages/croxley2.jpg"))
+knitr::include_graphics(c("https://raw.githubusercontent.com/ebhtra/msds-607/main/wk11/untappdImages/croxley1.jpg", "https://raw.githubusercontent.com/ebhtra/msds-607/main/wk11/untappdImages/croxley2.jpg"))
 ```
 
 \clearpage
@@ -44,7 +44,7 @@ The only way to make this type of recommender useful is to start with the blackb
 
 
 ```{r echo=FALSE, out.width="100%", fig.cap='Expensive to choose blindly'}
-knitr::include_graphics('untappdImages/beershelf.jpg')
+knitr::include_graphics('https://raw.githubusercontent.com/ebhtra/msds-607/main/wk11/untappdImages/beershelf.jpg')
 ```
 
 
