@@ -1,0 +1,229 @@
+---
+title: "HamNSpam"
+author: "Ethan Haley"
+date: "4/26/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Get a vector of all the filepaths
+## Sean you'll need to change this for Windows OS paths
+```{r}
+filepath <- c()
+
+for (d in c("spam", "easy_ham", "easy_ham_2", "hard_ham", "spam_2")) {
+  for (f in dir(d)) {
+    path <- paste0(d, '/', f)
+    filepath <- c(filepath, path)
+  }
+}
+```
+
+Make a function to split header and body, store filenames, and classify as spam/ham
+
+```{r}
+filepaths <- c()
+headers <- c()
+bodies <- c()
+spams <- c()
+
+header_and_body <- function(filestring) {
+  linelist <- read_lines(filestring)
+  len <- length(linelist)
+  for (line in 1:len) {
+    if (linelist[line] == '') {
+      header <- glue_collapse(linelist[1:(line-1)], sep='\n')
+      body <- glue_collapse(linelist[line:len], sep='\n')
+      return(c(filestring, header, body, str_starts(filestring, 's')))
+    }
+  }
+}
+#Use the vector of filepaths from the previous chunk
+for (fp in filepath) {
+  parsed <- header_and_body(fp)
+  filepaths <- c(filepaths, parsed[1])
+  headers <- c(headers, parsed[2])
+  bodies <- c(bodies, parsed[3])
+  spams <- c(spams, parsed[4])
+}
+
+d.f <- data.frame('filepaths'=filepaths, 'headers'=headers,
+                  'bodies'=bodies, 'is_spam'=spams)
+
+write.csv(d.f, 'headersBodies.csv')
+```
+
+### Some utility functions to transform raw text into useful features for ML  
+
+```{r}
+
+get_sender <- function(string) {
+  # 'John@aol.com'
+  str_replace(str_match(string, 'From:? \\S+'), 'From:? ', '')
+}
+get_angles <- function(string) {
+  # How many left angle brackets are there
+  str_count(string, '<')
+}
+get_uppers <- function(string) {
+  # How many caps chars
+  str_count(string, '[A-Z]')
+}
+get_lowers <- function(string) {
+  # How many lower chars
+  str_count(string, '[a-z]')
+}
+get_caps_ratio <- function(string) {
+  get_uppers(string) / get_lowers(string)
+}
+get_return_path <- function(string) {
+  # should be similar to get_sender(string)
+  str_replace_all(str_match(string, 'Return-Path: <\\S+>'),
+              c('Return-Path: <' = '', '>' = ''))
+}
+get_ips <- function(string) {
+  # list of all IP addresses
+  str_match_all(string, "[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}")
+}
+get_subject <- function(string) {
+  str_remove(str_match(string, 'Subject: [^\\n]+'), 'Subject: ')
+}
+get_zs <- function(string) {
+  str_count(string, 'z{3,6}')
+}
+get_ys <- function(string) {
+  str_count(string, 'y{3,6}')
+}
+get_xs <- function(string) {
+  str_count(string, 'x{3,6}')
+}
+get_ws <- function(string) {
+  str_count(string, 'w{3,6}')
+}
+get_domains <- function(string) {
+  str_count(string, '\\S@\\S+\\.\\S')
+}
+has_yahoo_groups <- function(string) {
+  str_detect(string, '@yahoogroups')
+}
+re_subject <- function(string) {
+  str_detect(string, '(?i)\\bre: ')
+}
+has_localhost <- function(ip_list) {
+  '127.0.0.1' %in% ip_list[[1]]
+}
+get_excl <- function(string) {
+  str_count(string, '!')
+}
+has_bad_html <- function(string) {
+  is.logical(possibly(read_html, TRUE)(string))
+}
+get_colors <- function(string) {
+  str_count(string, '(?i)colou?r')
+}
+get_3Ds <- function(string) {
+  str_count(string, '(?i)3d')
+}
+get_fonts <- function(string) {
+  str_count(string, '(?i)font')
+}
+get_sizes <- function(string) {
+  str_count(string, '(?i)size')
+}
+get_aligns <- function(string) {
+  str_count(string, '(?i)align')
+}
+```
+
+### Apply the above functions to add features to the data.frame
+
+```{r}
+d.f$bad_header <- unlist(lapply(d.f$headers, has_bad_html))
+d.f$bad_body <- unlist(lapply(d.f$bodies, has_bad_html))
+d.f$senders <- unlist(lapply(d.f$headers, get_sender))
+d.f$subjects <- unlist(lapply(d.f$headers, get_subject))
+d.f$noSub <- is.na(d.f$subjects)
+d.f$re_subj <- unlist(lapply(d.f$subjects, re_subject))
+d.f$headercolors <- unlist(lapply(d.f$headers, get_colors))
+d.f$bodycolors <- unlist(lapply(d.f$bodies, get_colors))
+d.f$header3Ds <- unlist(lapply(d.f$headers, get_3Ds))
+d.f$body3Ds <- unlist(lapply(d.f$bodies, get_3Ds))
+d.f$headerfonts <- unlist(lapply(d.f$headers, get_fonts))
+d.f$bodyfonts <- unlist(lapply(d.f$bodies, get_fonts))
+d.f$headersizes <- unlist(lapply(d.f$headers, get_sizes))
+d.f$bodysizes <- unlist(lapply(d.f$bodies, get_sizes))
+d.f$headeraligns <- unlist(lapply(d.f$headers, get_aligns))
+d.f$bodyaligns <- unlist(lapply(d.f$bodies, get_aligns))
+d.f$headerWs <- unlist(lapply(d.f$headers, get_ws))
+d.f$headerXs <- unlist(lapply(d.f$headers, get_xs))
+d.f$headerYs <- unlist(lapply(d.f$headers, get_ys))
+d.f$headerZs <- unlist(lapply(d.f$headers, get_zs))
+d.f$bodyWs <- unlist(lapply(d.f$bodies, get_ws))
+d.f$bodyXs <- unlist(lapply(d.f$bodies, get_xs))
+d.f$bodyYs <- unlist(lapply(d.f$bodies, get_ys))
+d.f$bodyZs <- unlist(lapply(d.f$bodies, get_zs))
+d.f$headerExcl <- unlist(lapply(d.f$headers, get_excl))
+d.f$subjectExcl <- unlist(lapply(d.f$subjects, get_excl))
+d.f$headerChars <- unlist(lapply(d.f$headers, possibly(nchar, -1)))
+d.f$bodyChars <- unlist(lapply(d.f$bodies, possibly(nchar, -1)))
+d.f$yahoos <- unlist(lapply(d.f$headers, has_yahoo_groups))
+
+ipLists <- lapply(d.f$headers, get_ips)
+d.f$hasLocals <- unlist(lapply(ipLists, has_localhost))
+
+d.f$domains <- unlist(lapply(d.f$headers, get_domains))
+d.f$subjectCAPS <- unlist(lapply(d.f$subjects, get_caps_ratio))
+d.f$headerBodyRatio <- d.f$headerChars / d.f$bodyChars
+d.f$headerAngles <- unlist(lapply(d.f$headers, get_angles))
+d.f$bodyAngles <- unlist(lapply(d.f$bodies, get_angles))
+d.f$hAngleRatio <- d.f$headerAngles / d.f$headerChars
+d.f$bAngleRatio <- d.f$bodyAngles / d.f$bodyChars
+d.f$bodyCAPS <- unlist(lapply(d.f$bodies, get_caps_ratio))
+d.f$exclRatio <- unlist(lapply(d.f$bodies, get_excl)) / d.f$bodyChars
+
+
+```
+
+```{r}
+head(d.f, 2)
+```
+```{r}
+#How many subjects have "Re: "
+sum(d.f$re_subj[!is.na(d.f$re_subj)] == T)
+```
+
+Sean's imports: 
+```{r echo=FALSE messages=FALSE}
+library(tidyverse)
+library(tidytext)
+library(tm)
+library(readr)
+library(textfeatures)
+library(magrittr)
+library(stringr)
+library(R.utils) #bunzip2
+library(glue)
+```
+
+
+Take a peek at textfeatures
+```{r}
+tf <- textfeatures(d.f$bodies[1:5])
+```
+```{r}
+dim(tf)
+```
+
+```{r}
+tf
+```
+
+```{r}
+tfh <- textfeatures(d.f$headers[1:5])
+tfh
+```
+
