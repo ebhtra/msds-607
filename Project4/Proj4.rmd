@@ -77,9 +77,6 @@ get_lowers <- function(string) {
   # How many lower chars
   str_count(string, '[a-z]')
 }
-get_caps_ratio <- function(string) {
-  get_uppers(string) / get_lowers(string)
-}
 get_return_path <- function(string) {
   # should be similar to get_sender(string)
   str_replace_all(str_match(string, 'Return-Path: <\\S+>'),
@@ -137,6 +134,9 @@ get_sizes <- function(string) {
 get_aligns <- function(string) {
   str_count(string, '(?i)align')
 }
+has_sex_words <- function(string) {
+  str_detect(tolower(string), 'sex|penis|penile|viagra')
+}
 ```
 
 ### Apply the above functions to add features to the data.frame
@@ -176,14 +176,16 @@ ipLists <- lapply(d.f$headers, get_ips)
 d.f$hasLocals <- unlist(lapply(ipLists, has_localhost))
 
 d.f$domains <- unlist(lapply(d.f$headers, get_domains))
-d.f$subjectCAPS <- unlist(lapply(d.f$subjects, get_caps_ratio))
+d.f$subjectCAPS <- unlist(lapply(d.f$subjects, get_uppers))
 d.f$headerBodyRatio <- d.f$headerChars / d.f$bodyChars
 d.f$headerAngles <- unlist(lapply(d.f$headers, get_angles))
 d.f$bodyAngles <- unlist(lapply(d.f$bodies, get_angles))
 d.f$hAngleRatio <- d.f$headerAngles / d.f$headerChars
 d.f$bAngleRatio <- d.f$bodyAngles / d.f$bodyChars
-d.f$bodyCAPS <- unlist(lapply(d.f$bodies, get_caps_ratio))
+d.f$bodyCAPS <- unlist(lapply(d.f$bodies, get_uppers)) / d.f$bodyChars
+d.f$bodyLowers <- unlist(lapply(d.f$bodies, get_lowers)) / d.f$bodyChars
 d.f$exclRatio <- unlist(lapply(d.f$bodies, get_excl)) / d.f$bodyChars
+d.f$subjectSex <- unlist(lapply(d.f$subjects, has_sex_words))
 
 
 ```
@@ -191,6 +193,133 @@ d.f$exclRatio <- unlist(lapply(d.f$bodies, get_excl)) / d.f$bodyChars
 ```{r}
 head(d.f, 2)
 ```
+```{r}
+library(tidymodels)
+library(skimr)
+skim(d.f)
+```
+Group features by type
+
+```{r}
+cl <- lapply(d.f, class)
+target <- 'is_spam'
+numericals <- names(d.f)[cl == 'numeric' | cl == 'integer']
+logicals <- names(d.f)[cl == 'logical']
+d.f[logicals] <- lapply(d.f[logicals], factor)
+logicals <- logicals[logicals != target]
+characters <- names(d.f)[cl == 'character']
+```
+
+Take care of NAs
+
+```{r}
+colMeans(d.f[numericals])
+```
+
+```{r}
+# find the NA subjects and replace them with 0
+sum(d.f$noSub == T)
+sum(is.na(d.f$subjectCAPS))
+sum(is.na(d.f$subjectExcl))
+```
+
+```{r}
+d.f$subjectCAPS[d.f$noSub == T] <- 0
+d.f$subjectExcl[d.f$noSub == T] <- 0
+colMeans(d.f[numericals])
+```
+
+```{r}
+# make sure all factors have at least 2 levels
+lapply(d.f[logicals], unique)
+```
+Should probably make those NA's be FALSE in the subject features
+
+```{r}
+d.f$re_subj[is.na(d.f$re_subj)] <- FALSE
+d.f$subjectSex[is.na(d.f$subjectSex)] <- FALSE
+lapply(d.f[logicals], unique)
+```
+
+
+
+Split into training and testing groups
+
+```{r}
+# set the random seed, for reproducibility, and split the data 80/20.
+set.seed(607)
+
+traintest <- initial_split(d.f, prop = .80)
+train_data <- training(traintest)
+test_data  <- testing(traintest)
+```
+
+Make a recipe to scale numerics
+
+```{r}
+rec <- recipe(is_spam ~ ., data = train_data) %>%
+  update_role(all_of(characters), new_role = "ID") %>%
+  step_normalize(all_of(numericals))
+# prep() fits the scaler to the training data
+scaler <- prep(rec, training = train_data)
+# and bake() transforms all data using the statistics learned by prep()
+scaled_train <- bake(scaler, train_data)
+scaled_test <- bake(scaler, test_data)
+```
+
+Now the scaled data can be used to train models.  Or at least that shows conceptually how the scaler will be fit to and transform the data. But instead of exiting the pipeline so soon, recipes can fit inside of a larger pipeline called a `workflow()`, which manages all the scaling steps as part of a model parameter fitting and prediction process.  It just needs the data, the recipe, and a model.
+
+One natural model choice to start with might be a logistic regression classifier, such as `logistic_reg()` from the `parsnip` package. 
+
+```{r}
+lr_mod <- logistic_reg() %>%
+  set_engine('glm') # barebones log_reg, without regularization penalties
+
+spam_workflow <- workflow() %>%
+  add_model(lr_mod) %>%
+  add_recipe(rec)
+
+spam_workflow
+```
+
+Fit the model to the training set.  
+
+```{r}
+spam_fit <- spam_workflow %>%
+  fit(data = train_data)
+spam_fit %>% 
+  pull_workflow_fit() %>% 
+  tidy()
+```
+We can set the logistic regression model to output its predictions in probabilities, rather than just binary 'yes'/'no' predictions, and that way we can look at the area under the ROC as a means of evaluating the model over all choices of threshold, rather than just .50.
+
+```{r}
+spam_pred <- 
+  predict(spam_fit, test_data, type = "prob") %>% 
+  bind_cols(test_data %>% select(is_spam))
+  # bound the true values for visual inspection of predictions
+spam_pred
+```
+
+```{r}
+spam_pred %>% 
+  roc_curve(truth = is_spam, .pred_FALSE) %>% 
+  autoplot()
+```
+
+```{r}
+spam_pred %>% 
+  roc_auc(truth = is_spam, .pred_FALSE)
+```
+```{r}
+accu <- sum((spam_pred$.pred_TRUE > 0.5) == (spam_pred$is_spam)) / nrow(spam_pred)
+accu
+```
+
+
+
+
+
 ```{r}
 #How many subjects have "Re: "
 sum(d.f$re_subj[!is.na(d.f$re_subj)] == T)
