@@ -1,6 +1,6 @@
 ---
-title: "Hormail"
-author: "Sean Connin & Ethan Haley"
+title: "Data607_proj4_email_classifier"
+author: "Ethan Haley & Sean Connin"
 date: "4/26/2021"
 output: html_document
 ---
@@ -8,8 +8,27 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+## Introduction
 
-```{r}
+The purpose of this project is to develop a complete machine learning pipeline to classify incoming email as either ham or spam. And to both evaluate/critique our model(s) on the basis of its performance. Our approach to this task included substantive steps to process our data, engineer new features (with possible predictive value), and then develop a classification scheme using logistic regression and random forest models.
+
+We employed tidymodels for our model development - which included model parameterization, training, cross-validation, and  testing. We also reviewed our results to distinguish elements of the spam/ham emails that were important to the classification results.  
+
+Our project steps included the following:
+
+1.  Collect relevant folder and and files for processing
+
+2.  Process files and text to facilitate modeling
+
+3.  Build, cross-validate, review results of logistic regression classifier
+
+4.  Build, cross_validate, review results of random forest classifier
+
+5.  Compare results to null model
+
+With that sequence in mind, let's build our libraries.
+
+```{r  results='hide' }
 library(tidymodels)
 library(magrittr)
 library(tidyverse)
@@ -24,17 +43,34 @@ library(themis)
 library(skimr)
 ```
 
-**Get to folder where you downloaded spam/ham corpus on your computer**
+### 1. Collect relevant folder and and files for processing
 
-```{r}
+Get to folder where you downloaded spam/ham corpus on your computer
+
+```{r warning = 'FALSE'}
+
 getwd()
+
+setwd("~/Data_Science/CUNY/Data 607 Acquisition and Management/Assignments/Proj 4/email")
+
+list.files()
+
+filepath <- c()
+
+for (d in c("spam", "easy_ham", "easy_ham_2", "hard_ham", "spam_2")) {
+  for (f in dir(d)) {
+    path <- file.path(d, f)
+    filepath <- c(filepath, path)
+  }
+}
+filepath[1:3]
 ```
 
-```{r}
+```{r results='FALSE'}
 dir()
 ```
 
-**Collect all email filepaths in one vector**
+Collect all email filepaths in one vector.
 
 ```{r}
 filepath <- c()
@@ -48,7 +84,7 @@ for (d in c("spam", "easy_ham", "easy_ham_2", "hard_ham", "spam_2")) {
 filepath[1:3]
 ```
 
-**Make a function to split header and body, store filenames, and classify as spam/ham**
+Make a function to split header and body, store filenames, and classify as spam vs. ham.
 
 ```{r}
 filepaths <- c()
@@ -82,7 +118,9 @@ d.f <- data.frame('filepaths'=filepaths, 'headers'=headers,
 #write.csv(d.f, 'headersBodies.csv')
 ```
 
-### Some utility functions to transform raw text into useful features for ML  
+### 2. Process files and text to facilitate modeling
+
+Build utility functions to transform raw text into useful features for our model.
 
 ```{r}
 
@@ -164,7 +202,7 @@ has_sex_words <- function(string) {
 }
 ```
 
-### Apply the above functions to add features to the data.frame
+Apply the functions to add features to the data.frame
 
 ```{r}
 d.f$bad_header <- unlist(lapply(d.f$headers, has_bad_html))
@@ -212,19 +250,19 @@ d.f$bodyLowers <- unlist(lapply(d.f$bodies, get_lowers)) / d.f$bodyChars
 d.f$exclRatio <- unlist(lapply(d.f$bodies, get_excl)) / d.f$bodyChars
 d.f$subjectSex <- unlist(lapply(d.f$subjects, has_sex_words))
 
+# Review results
 
-```
-
-```{r}
 head(d.f, 2)
+
 ```
-**Check how the features are categorized**
+
+Create a summary of feature statistics and categories.
 
 ```{r}
 skim(d.f)
 ```
 
-**Group features by type**
+Group features by type prior to modeling.
 
 ```{r}
 d.f$is_spam <- as.logical(d.f$is_spam)
@@ -237,33 +275,33 @@ characters <- names(d.f)[cl == 'character']
 is.factor(d.f$is_spam)
 ```
 
-**Take care of NAs, which some models refuse to work with**
+For numerical features, we recode missing values (NA), which some models refuse to work with.
+
+Confirm factor levels
 
 ```{r}
+
 colMeans(d.f[numericals])
-```
 
-```{r}
 # find the NA subjects and replace them with 0
 sum(d.f$noSub == T)
 sum(is.na(d.f$subjectCAPS))
 sum(is.na(d.f$subjectExcl))
-```
 
-```{r}
+
 d.f$subjectCAPS[d.f$noSub == T] <- 0
 d.f$subjectExcl[d.f$noSub == T] <- 0
 colMeans(d.f[numericals])
-```
 
-```{r}
 # make sure all factors have at least 2 levels
+
 lapply(d.f[logicals], unique)
 ```
 
-**Should probably make those NA's be FALSE in the subject features**
+For subject features we recode so that missing values (NA) = FALSE.
 
 ```{r}
+
 d.f$re_subj[is.na(d.f$re_subj)] <- FALSE
 d.f$subjectSex[is.na(d.f$subjectSex)] <- FALSE
 # and change the subjects themselves too
@@ -271,7 +309,9 @@ d.f$subjects[is.na(d.f$subjects)] <- "no subject"
 lapply(d.f[logicals], unique)
 ```
 
-### Split into training and testing groups
+###3. Build, cross-validate, review results of logistic regression classifier
+
+Split dataset into training and testing groups.
 
 ```{r}
 # set the random seed, for reproducibility, and split the data 80/20.
@@ -282,25 +322,34 @@ train_data <- training(traintest)
 test_data  <- testing(traintest)
 ```
 
-**Make a recipe to scale numerics for logistic regression**
+Make a recipe to scale numerical features for logistic regression.
 
 ```{r}
 rec <- recipe(is_spam ~ ., data = train_data) %>%
+  
   # Keep string features out of the modeling, but keep them around.
+  
   update_role(all_of(characters), new_role = "ID") %>%
   step_normalize(all_of(numericals)) %>%
+  
   # One-hot encode all logicals except for target
+ 
   step_dummy(all_of(logicals), -is_spam)
+  
 # prep() fits the scaler to the training data
+
 scaler <- prep(rec, training = train_data)
+
 # and bake() transforms all data using the statistics learned by prep()
+
 scaled_train <- bake(scaler, train_data)
+
 scaled_test <- bake(scaler, test_data)
 ```
 
-Now the scaled data can be used to train models.  Or at least that shows conceptually how the scaler will be fit to and transform the data. But instead of exiting the pipeline so soon, recipes can fit inside of a larger pipeline called a `workflow()`, which manages all the scaling steps as part of a model parameter fitting and prediction process.  It just needs the data, the recipe, and a model.
+Now the scaled data can be used to train models. Or at least that shows conceptually how the scaler will be fit to and transform the data. But instead of exiting the pipeline so soon, recipes can fit inside of a larger pipeline called a `workflow()`, which manages all the scaling steps as part of a model parameter fitting and prediction process. It just needs the data, the recipe, and a model.
 
-One natural model choice to start with might be a logistic regression classifier, such as `logistic_reg()` from the `parsnip` package. 
+One natural model choice to start with might be a logistic regression classifier, such as `logistic_reg()` from the `parsnip` package.
 
 ```{r}
 lr_mod <- logistic_reg() %>%
@@ -313,14 +362,14 @@ spam_workflow <- workflow() %>%
 spam_workflow
 ```
 
-Fit the model to the training set.  
+Fit the logistic model to the training set.
 
 ```{r warning=F}
 spam_fit <- spam_workflow %>%
   fit(data = train_data)
 ```
 
-### See which features had most influence making email look like HAM
+See which features had most influence making email look like HAM.
 
 ```{r}
 spam_fit %>% 
@@ -330,9 +379,10 @@ spam_fit %>%
   arrange(estimate) %>%
   select(c(term, estimate, p.value))
 ```
-**The YahooGroups coefficient has too high of a p-value to be worth anything, but after that, the biggest identifiers of legit email (Are you listening, all you spammers out there?) are emails that have subjects showing "RE:" in them, email bodies with websites in them ('bodyWs'), emails with a high ratio of lower case letters in the email, with a lot of angle brackets in the header, and with a localhost IP address (127.0.0.1) in the header.**  
 
-### Now for the highest SPAM indicators:
+Results: The YahooGroups coefficient has too high of a p-value to be worth anything, but after that, the biggest identifiers of legit email (Are you listening, all you spammers out there?) are emails that have subjects showing "RE:" in them, email bodies with websites in them ('bodyWs'), emails with a high ratio of lower case letters in the email, with a lot of angle brackets in the header, and with a localhost IP address (127.0.0.1) in the header.
+
+Now we assess the most influential SPAM indicators:
 
 ```{r}
 spam_fit %>% 
@@ -341,19 +391,22 @@ spam_fit %>%
   arrange(-estimate) %>%
   select(c(term, estimate, p.value))
 ```
-**A lot of capital letters and exclamation points in the email body won't help it get past the spam filter, unsurprisingly, nor will mentioning words like viagra and sex organs.  If there are many fonts or other html markup, if a subject field is left out, or if many domains are in the header (think email blasts), those are other good indicators of spamminess.**  
 
-### Take a look at how well the trained model performs on the test data predictions  
+Results: A lot of capital letters and exclamation points in the email body won't help it get past the spam filter, unsurprisingly, nor will mentioning words like viagra and sex organs. If there are many fonts or other html markup, if a subject field is left out, or if many domains are in the header (think email blasts), those are other good indicators of spamminess.
 
-**We can set the logistic regression model to output its predictions in probabilities, rather than just binary 'yes'/'no' predictions, and that way we can look at the area under the ROC as a means of evaluating the model over all choices of threshold, rather than just .50.**
+Now we evaluate how well the trained model performs on the test data predictions.
+
+Note: We can set the logistic regression model to output its predictions in probabilities, rather than just binary 'yes'/'no' predictions, and that way we can look at the area under the ROC as a means of evaluating the model over all choices of threshold, rather than just .50.
 
 ```{r}
 spam_pred <- 
   predict(spam_fit, test_data, type = "prob") %>% 
-  bind_cols(test_data %>% select(is_spam))
-  # bound the true values for visual inspection of predictions
+  bind_cols(test_data %>% select(is_spam)) # bound the true values for visual inspection of predictions
+
 spam_pred
 ```
+
+Plot our model roc_curve
 
 ```{r}
 spam_pred %>% 
@@ -365,20 +418,23 @@ spam_pred %>%
 spam_pred %>% 
   roc_auc(truth = is_spam, .pred_FALSE)
 ```
-**Looks like a pretty reasonable ROC-AUC, for a starter model.  How about the accuracy?**  
+
+We have a reasonable ROC-AUC for a starter model. We should also assess our model's accuracy?
 
 ```{r}
 accu <- sum((spam_pred$.pred_TRUE > 0.5) == (spam_pred$is_spam)) / nrow(spam_pred)
 accu
 ```
 
-**Incidentally, but importantly, if you change the threshold from the default 0.5 used above, the accuracy improves slightly as you lower the classification threshold, down to 0.4 and even 0.3.   But this is the wrong thing to do, for two reasons:**  
- - You shouldn't tweak parameters after seeing test results, if your goal is to measure the PREdictive strength of a model.
- - You would be improving accuracy by causing your filter to send more emails, both spam and ham, to the spam folder.  While in some classification applications, such as perhaps medical diagnostics, improving predictive accuracy at the expense of more false positives might be a good tradeoff, it's hard to imagine someone wanting to see less spam in her inbox at the expense of having to constantly check her spam folder to make sure she didn't miss important ham.
+Note: if you change the threshold from the default 0.5 used above, the accuracy improves slightly as you lower the classification threshold, down to 0.4 and even 0.3. However, there are reasons to avoid this step, if your goal is to measure the predictive strength of a model.
 
-**85.7%  accuracy isn't too bad, since about 32% of the training data is spam, meaning that a useless spam filter that let every email through would score 68% accuracy.  This spam/ham imbalance brings up another idea, about training the model on a balanced spam/ham dataset, by undersampling the majority (ham) group.**  
+For example, changing model parameters after seeing the test results could improve model accuracy by causing your filter to send more emails, both spam and ham, to the spam folder. 
 
-The `themis` package is one of many that can perform this duty for us. 
+While in some classification applications, such as perhaps medical diagnostics, improving predictive accuracy at the expense of more false positives might be a good tradeoff, it's hard to imagine someone wanting to see less spam in her inbox at the expense of having to constantly check her spam folder to make sure she didn't miss important ham.
+
+Our model's accuracy (85.7%) is acceptable given that ~32% of the training data is spam. It's worth noting that the ratio of model inputs (spam & ham email) are unbalanced such that we are undersampling the majority (ham) group. 
+
+We can rebalance our training/test data to avoid this. The `themis` package is one of many that can perform this duty for us.
 
 ```{r warning=F}
 # Modify the existing recipe and then update the workflow with it
@@ -390,6 +446,9 @@ spam_workflow <- spam_workflow %>%
 spam_fit <- spam_workflow %>%
   fit(data = train_data)
 ```
+
+We check our model's accuracy after rebalancing our data inputs.
+
 ```{r}
 spam_pred <- 
   predict(spam_fit, test_data, type = "prob") %>% 
@@ -399,9 +458,9 @@ glue('The test accuracy after fitting the same model on a balanced training set 
 {round(100 * accu, 1)}%, vs 85.7% from imbalanced training.')
 ```
 
-**Now that we've gotten a glimpse of what a barebones regression model can learn from some roughly handcrafted features, it's tempting to find an even more powerful modern model, feed it more data, in the form of email text, and see what sorts of patterns and relationships it can find and use to make predictions.  So why wait?**  
+Now that we've gotten a glimpse of what a basic logistic regression model can learn from some roughly handcrafted features, it's tempting to find an even more powerful modern model (e.g., random forest), feed it more data, in the form of email text, and see what sorts of patterns and relationships it can find and use to make predictions. So why wait?
 
-#### First, a look at what sorts of words the language processor will be dealing with
+First, a look at what sorts of words the language processor will be dealing with.
 
 ```{r}
 # review data in tidy form
@@ -429,8 +488,9 @@ tidy %>%
     title = "Most frequent words")
 ```
 
+##4.  Build, cross_validate, review results of random forest classifier
 
-### Update the recipe to calculate and select important email message tokens
+Our first step in constructing a random forest model is to update the recipe to calculate and select important email message tokens.
 
 ```{r}
 # reminder: "bodies" is a feature column in the d.frame, which holds the email text
@@ -440,7 +500,7 @@ email_recipe <- email_recipe %>%
     step_tfidf(bodies) 
 ```
 
-**Initialize a random forest model to plug into the workflow**
+Initialize a random forest model to plug into the workflow
 
 ```{r}
 rf<- rand_forest(trees = 200, mtry = 20, min_n = 3) %>%
@@ -448,31 +508,39 @@ rf<- rand_forest(trees = 200, mtry = 20, min_n = 3) %>%
     set_mode("classification") 
 ```
 
-**Make cross-validation folds**  
+Make cross-validation folds
 
 ```{r}
 email_folds <- vfold_cv(data = train_data, strata = is_spam, v = 5)
 ```
 
-**Update workflow**
+Update the model workflow to incorporate these changes
+
+Note: this would be an appropriate place to build a sparse matrix for the data to facilitate model speed. However, we were unable to coerce a matrix into the df. 
 
 ```{r}
 spam_workflow<- spam_workflow %>%         
     update_recipe(email_recipe) %>%
     update_model(rf)
-#Fit model (Random Forest) with cross validation. #this code comes from https://rpubs.com/shampjeff/tidy_spam_clf
-#note: was unable to coerce sparse matrix into df with random forest model. Not clear why. 
+
 rf_model_fit <- fit_resamples(
     spam_workflow,
     email_folds,
     metrics = metric_set(roc_auc, accuracy),
     control = control_resamples(save_pred=TRUE))
-collect_metrics(rf_model_fit)  #roc_auc = .997, accuracy = .977
+
+collect_metrics(rf_model_fit) 
 ```
-**While it's possible that the model has overfit to produce these highly accurate numbers, random forests are relatively resilient to overfitting, by limiting the pool of features to choose from for each fit (we set the `mtry` argument to 20 possible features each split, when initializing the rf model), and by using many different trees (we used 200 here).  But let's train the model on all 5 folds now and see how it does on the held out test data.**  
+
+While it's possible that the model has overfit to produce these highly accurate numbers, random forest models are relatively resilient to over-fitting, by limiting the pool of features to choose from for each fit (we set the `mtry` argument to 20 possible features each split, when initializing the rf model), and by using many different trees (we used 200 here). 
+
+Let's train the model with the 5 folds and see how it performs on the test data.
 
 ```{r}
+
+
 # Use last_fit to fit to the full (downsampled) training set and then evaluate the full test set
+
 rf_final<-
     spam_workflow %>%
     last_fit(traintest)
@@ -482,13 +550,16 @@ cmat <- rf_final %>%
     conf_mat(truth = is_spam, estimate = .pred_class)
 summary(cmat)
 ```
-**The accuracy is actually a little higher now, perhaps from having 25% more data to train on.  Let's see what sorts of errors it's still making.**  
+
+The accuracy is actually a little higher now, perhaps from having 25% more data to train on. Let's see what sorts of errors it's still making.
 
 ```{r}
 autoplot(cmat, type = "heatmap")
 ```
 
-**Those results are satisfying from an accuracy standpoint, but if this model were used in the real world, we might want to raise the classification threshold from 0.5 in order to reduce the 23 false positives (lower left) at the expense of the 3 false negatives (upper right).** 
+The results indicate a high accuracy level, but if this model were used in the real world, we might want to raise the classification threshold from 0.5 in order to reduce the 23 false positives (lower left) at the expense of the 3 false negatives (upper right).
+
+Lets evaluate our model results with this in mind. 
 
 ```{r}
 preds <- rf_final$.predictions
@@ -506,6 +577,7 @@ false_pos <- preds[[1]] %>%
 ```{r}
 false_pos
 ```
+
 ```{r}
 hard_hams <- c()
 for (row in 1:length(d.f$filepaths)) {
@@ -517,23 +589,25 @@ glue('Hard hams start at row {min(hard_hams)} and go to row {max(hard_hams)}.
 There are {length(hard_hams)} of them.')
 ```
 
-**So 20 of the 26 false positives were from the "hard ham" folder.  If you look at one of these false positives (the last one, for example, since it had a 73.5% prediction of being spam, which was approximately median for this tough group), you can see the difficulty:**  
+So 20 of the 26 false positives were from the "hard ham" folder. If you look at one of these false positives (the last one, for example, since it had a 73.5% prediction of being spam, which was approximately median for this tough group), you can see the difficulty.
 
 ```{r}
 d.f$bodies[4650]
 ```
 
-**How about those 3 sneaky spams that got through the defenses?**
+How about those 3 sneaky spams that got through the defenses?
 
 ```{r}
 false_negs
 ```
-**Two of them had a pretty even chance of being filtered out, but let's look at that one that was only given a 21% chance of being spam:**  
+
+Two of them had a pretty even chance of being filtered out, but let's look at that one that was only given a 21% chance of being spam.
+
 ```{r}
 d.f$bodies[5816]
 ```
 
-**I guess one person's ham is another's spam.**
+Perhaps one person's ham is another's spam. As a final check on our Random Forest model results we check output from a null model
 
 ```{r}
 #Evaluate null model results as a check on ourselves
@@ -551,3 +625,4 @@ null_model_fit <- fit_resamples(
 collect_metrics(null_model_fit)  #--> roc_auc .50, accuracy = .68
 ```
 
+The null model provides us with an roc_auc and accuracy that we might expect by guessing the type of email (spam vs. ham). Comparing to our null results, it's clear that our logistic and random forest models have performed well. 
