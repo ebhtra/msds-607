@@ -401,6 +401,35 @@ glue('The test accuracy after fitting the same model on a balanced training set 
 
 **Now that we've gotten a glimpse of what a barebones regression model can learn from some roughly handcrafted features, it's tempting to find an even more powerful modern model, feed it more data, in the form of email text, and see what sorts of patterns and relationships it can find and use to make predictions.  So why wait?**  
 
+#### First, a look at what sorts of words the language processor will be dealing with
+
+```{r}
+# review data in tidy form
+tidy<-d.f %>%
+    unnest_tokens(word, bodies) %>%
+    group_by(word) %>%
+    filter(n()>20) %>%
+        ungroup()
+tidy %>%
+  count(is_spam, word, sort = TRUE) %>%
+  anti_join(get_stopwords()) %>%
+  group_by(is_spam) %>%
+  top_n(20) %>%
+  ungroup() %>%
+  ggplot(aes(reorder_within(word, n, is_spam), n,
+    fill = is_spam
+  )) +
+  geom_col(alpha = 0.8, show.legend = FALSE) +
+  scale_x_reordered() +
+  coord_flip() +
+  facet_wrap(~is_spam, scales = "free") +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(
+    x = NULL, y = "Word count",
+    title = "Most frequent words")
+```
+
+
 ### Update the recipe to calculate and select important email message tokens
 
 ```{r}
@@ -446,19 +475,65 @@ collect_metrics(rf_model_fit)  #roc_auc = .997, accuracy = .977
 # Use last_fit to fit to the full (downsampled) training set and then evaluate the full test set
 rf_final<-
     spam_workflow %>%
-    last_fit(traintest) %>%
+    last_fit(traintest)
+
+cmat <- rf_final %>%
     collect_predictions() %>%
     conf_mat(truth = is_spam, estimate = .pred_class)
-summary(rf_final)
+summary(cmat)
 ```
 **The accuracy is actually a little higher now, perhaps from having 25% more data to train on.  Let's see what sorts of errors it's still making.**  
 
 ```{r}
-autoplot(rf_final, type = "heatmap")
+autoplot(cmat, type = "heatmap")
 ```
 
 **Those results are satisfying from an accuracy standpoint, but if this model were used in the real world, we might want to raise the classification threshold from 0.5 in order to reduce the 23 false positives (lower left) at the expense of the 3 false negatives (upper right).** 
 
+```{r}
+preds <- rf_final$.predictions
+
+false_negs <- preds[[1]] %>%
+  filter(.pred_class == FALSE) %>%
+  filter(is_spam == TRUE)
+
+false_pos <- preds[[1]] %>%
+  filter(.pred_class == TRUE) %>%
+  filter(is_spam == FALSE)
+
+```
+
+```{r}
+false_pos
+```
+```{r}
+hard_hams <- c()
+for (row in 1:length(d.f$filepaths)) {
+  if (str_starts(d.f$filepaths[row], 'hard')) {
+    hard_hams <- c(hard_hams, row)
+  }
+}
+glue('Hard hams start at row {min(hard_hams)} and go to row {max(hard_hams)}.  
+There are {length(hard_hams)} of them.')
+```
+
+**So 20 of the 26 false positives were from the "hard ham" folder.  If you look at one of these false positives (the last one, for example, since it had a 73.5% prediction of being spam, which was approximately median for this tough group), you can see the difficulty:**  
+
+```{r}
+d.f$bodies[4650]
+```
+
+**How about those 3 sneaky spams that got through the defenses?**
+
+```{r}
+false_negs
+```
+**Two of them had a pretty even chance of being filtered out, but let's look at that one that was only given a 21% chance of being spam:**  
+```{r}
+d.f$bodies[5816]
+```
+
+**I guess one person's ham is another's spam.**
 
 ```{r}
 #Evaluate null model results as a check on ourselves
