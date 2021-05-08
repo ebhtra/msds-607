@@ -1,0 +1,524 @@
+---
+title: "EarthWave"
+author: "Ethan Haley"
+date: "4/24/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE, warning=F}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(httr)
+library(jsonlite)
+library(glue)
+library(countrycode)
+```
+
+```{r}
+my_ID <- 'f319ab5bf1b64371b61a4818d0fd2b35'
+my_secret <- '7185d542af1a4755be71f2dfb1ade67d'
+```
+
+```{r}
+# This gets you an access token that's good for 1 hour
+get_auth <- function(){
+  response <- POST('https://accounts.spotify.com/api/token',
+                 accept_json(),
+                 authenticate(my_ID, my_secret),
+                 body = list(grant_type='client_credentials'),
+                 encode = 'form')
+  paste('Bearer', content(response)$access_token)
+}
+
+```
+
+### Get all categories
+
+```{r}
+auth <- get_auth()
+baseUrl <- 'https://api.spotify.com/v1/'
+cat_list_endpt <- 'browse/categories'
+
+cat_url <- paste0(baseUrl, cat_list_endpt, '?limit=50')
+cat_resp <- GET(cat_url, add_headers(Authorization=auth))
+# Looks like that returned 50 out of 54 categories
+cat2_url <- paste0(baseUrl, cat_list_endpt, '?offset=50&limit=50')
+cat2_resp <- GET(cat2_url, add_headers(Authorization=auth))
+
+cat_IDs <- c()
+cat_names <- c()
+for (i in content(cat_resp)$categories$items) {
+  cat_IDs <- c(cat_IDs, i$id)
+  cat_names <- c(cat_names, i$name)
+}
+for (i in content(cat2_resp)$categories$items) {
+  cat_IDs <- c(cat_IDs, i$id)
+  cat_names <- c(cat_names, i$name)
+}
+cats <- data.frame(ID=cat_IDs, name=cat_names)
+cats <- unique(cats)
+cats
+write_csv(cats, 'spotifyCategories.csv')
+```
+
+#### Get all playlists from all countries 
+
+```{r}
+#auth <- get_auth()
+# countrycode package has a list of the 2-letter country codes spotify uses
+countries <- codelist$iso2c
+countries <- countries[!is.na(countries)]
+
+masterframe = data.frame('collab' = c(),
+                   'description' = c(),
+                   'ID' = c(),
+                   'imageUrl' = c(),
+                   'name' = c(),
+                   'owner' = c(),
+                   'ownerID' = c(),
+                   'ownerType' = c(),
+                   'tracks' = c(),
+                   'country' = c(),
+                   'genre' = c())
+get_all_playlists <- function(dfr) {
+  for (co in countries) {
+    for (ca in c(cats$ID)) {
+      r <- get_playlists_by_category_country(ca, co)
+      if (r$status_code == 200) {
+        cr <- content(r)
+        playlists <- parse_playlists(cr)
+        playlists$country <- rep(co, length(playlists$ID))
+        playlists$genre <- rep(ca, length(playlists$ID))
+        dfr <- rbind(dfr, playlists)
+      }
+    }
+  }
+  return(dfr)
+}
+
+parse_playlists <- function(playlists_content) {
+  templist <- list('collab' = c(),
+                   'description' = c(),
+                   'ID' = c(),
+                   'imageUrl' = c(),
+                   'name' = c(),
+                   'owner' = c(),
+                   'ownerID' = c(),
+                   'ownerType' = c(),
+                   'tracks' = c()
+                   )
+  for (item in playlists_content$playlists$items) {
+    templist$collab <- c(templist$collab, item$collaborative)
+    templist$description <- c(templist$description, item$description)
+    templist$ID <- c(templist$ID, item$id)
+    templist$imageUrl <- c(templist$imageUrl, item$images[[1]]$url)
+    templist$name <- c(templist$name, item$name)
+    templist$owner <- c(templist$owner, item$owner$display_name)
+    templist$ownerID <- c(templist$ownerID, item$owner$id)
+    templist$ownerType <- c(templist$ownerType, item$owner$type)
+    templist$tracks <- c(templist$tracks, item$tracks$total)
+  }
+  return(templist)
+}
+```
+
+```{r}
+masterframe <- get_all_playlists(masterframe)
+tail(masterframe)
+## save this part thru mid-Portugal, to avoid repeating
+write_csv(masterframe, 'masterPlaylist.csv')
+```
+
+```{r}
+masterframe <- read.csv('masterPlaylist.csv')
+dim(masterframe)
+head(masterframe)
+```
+```{r}
+masterframe %>%
+  group_by(country) %>%
+  summarise(count = n()) %>%
+  arrange(count) 
+```
+```{r}
+# Portugal got partly duped from restarting the loop
+masterframe <- masterframe[!duplicated(masterframe), ]
+masterframe %>%
+  group_by(country) %>%
+  summarise(count = n()) %>%
+  arrange(-count) 
+```
+Sorry, Portugal.
+
+```{r}
+code2country <- function(code) {
+  codelist$country.name.en[which(codelist$iso2c == code)]
+}
+code2country('IE')
+```
+
+```{r}
+masterframe %>%
+  group_by(ID) %>%
+  summarise(count = n()) %>%
+  arrange(-count) 
+```
+
+
+
+```{r}
+auth <- get_auth()
+get_playlists_by_category_country <- function(categoryID, countryCode='US', offset=0) {
+  endpt <- glue(baseUrl, 'browse/categories/{categoryID}/playlists?country={countryCode}&offset={offset}&limit=50')
+  resp <- GET(endpt, add_headers(Authorization=auth))
+}
+r <- get_playlists_by_category_country('toplists', 'ES')
+content(r)
+r2 <- get_playlists_by_category_country('toplists', 'ES')
+content(r2)
+content(r)
+
+```
+
+How many unique playlists globally?
+
+```{r}
+length(unique(masterframe$ID))
+```
+
+#### Get all songs from each playlist ID  
+
+```{r}
+auth <- get_auth()
+baseUrl <- 'https://api.spotify.com/v1/'
+pl_endpt <- 'playlists/'
+```
+
+```{r}
+get_playlist_details <- function(playlistID) {
+  pl_url <- paste0(baseUrl, pl_endpt, playlistID)
+  pl_resp <- GET(pl_url, add_headers(Authorization=auth))
+  return(list(pl_resp))
+}
+```
+
+```{r}
+#auth <- get_auth()
+resps <- c()
+uID <- unique(masterframe$ID)
+pl <- uID[3226:length(uID)]
+for (p in pl) {
+  r <- get_playlist_details(p)
+  if (r[[1]]$status_code == 401) {
+    cat("STUCK ON ", p)
+    get_auth()
+  }
+  resps <- c(resps, r)
+}
+save(resps, file='resps.RData')
+resps[5813]
+# clear space
+resps <- 0
+```
+
+#### Parse the info out of the playlist responses  
+
+```{r}
+# collect track info in case it saves API calls later
+allTracks <- c()
+
+dates <- c()
+follows <- c()
+names <- c()
+description <- c()
+collaborative <- c()
+ids <- c()
+public <- c()
+owner <- c()
+numtracks <- c()
+trackIDs <- list()
+
+for (r in 1:length(resps)) {
+  dates <- c(dates, resps[[r]]$date)
+  
+  cont <- content(resps[[r]])
+  
+  ids <- c(ids, cont$id)
+  follows <- c(follows, cont$followers$total)
+  collaborative <- c(collaborative, cont$collaborative)
+  description <- c(description, cont$description)
+  names <- c(names, cont$name)
+  owner <- c(owner, cont$owner$id)
+  public <- c(public, cont$public)
+  numtracks <- c(numtracks, cont$tracks$total)
+  
+  items <- cont$tracks$items
+
+  tracklist <- c()
+  
+  numitems <- length(items)
+  
+  for (i in 1:numitems) {
+    tracklist <- c(tracklist, items[[i]]$track$id)
+    allTracks[items[[i]]$track$id] <- items[[i]]$track
+  }
+  trackIDs[[cont$id]] <- tracklist
+}
+
+PL_data <- data.frame(ids=ids, name=names, followers=follows, tracks=numtracks,
+                      date=rep(as.Date.POSIXct(dates[1]), length(ids)),
+                      collab=collaborative, description=description,
+                      owner=owner, public=public)
+write.csv(PL_data, 'PLdata.csv')
+head(PL_data,2)
+```
+
+```{r}
+PL_tracks <- c()
+```
+
+```{r}
+for (i in 1:length(resps)) {
+  if (i%%100 == 0) {print(i)}
+  if (resps[[i]]$status_code == 200) {
+    con <- content(resps[[i]])
+    if (con$id %in% ids) {
+      tracks <- c()
+      numitems <- length(con$tracks$items)
+      for (j in 1:numitems) {
+        tracks <- c(tracks, con$tracks$items[[j]]$track$id)
+      }
+      PL_tracks[[con$id]] <- tracks
+    }
+  }
+}
+# save to dataframe
+pldf <- data.frame(PLid=names(PL_tracks))
+pldf$PLtracks <- PL_tracks
+dim(pldf)
+# R won't write a d.frame with a column of lists
+pldf$PLtracks <- as.character(pldf$PLtracks)
+write.csv(pldf, 'PLtracks.csv')
+```
+
+
+
+```{r}
+## see if any of those playlists had greater than 100 tracks, since that is a hidden limit on the GET playlist request
+bigIDs <- c()
+bigTotals <- c()
+for (r in resps) {
+  c <- content(resps[[1]])
+  if (c$tracks$total > 100) {
+    bigIDs <- c(bigIDs, c$id)
+    bigTotals <- c(bigTotals, c$tracks$total)
+  }
+}
+length(bigTotals)
+```
+ OK so that wasn't an issue.  Now let's see about the track info for tracks in playlists.  
+ 
+
+### Need to deal with the large allTracks list
+
+```{r}
+trackDF <- data.frame(name=c(), released=c(), artist=c(),
+                      artistID=c(), albumID=c())
+```
+```{r}
+#loop over all stored track IDs to populate dframe
+parse_track <- function(trackID) {
+  tr <- allTracks[trackID][[1]]
+  released <- tr$release_date
+  artist <- tr$artists[[1]]$name
+  artID <- tr$artists[[1]]$id
+  name <- tr$name
+  albID <- tr$id
+  return(list(name=name, released=released, artist=artist,
+              artistID=artID, albumID=albID)) 
+}
+tnames <- names(allTracks)
+for (i in 1:length(tnames)) {
+  if(i%%2000 == 0){print(i)}
+  trackDF <- rbind(trackDF, parse_track(tnames[i]))
+}
+#write.csv(trackDF, 'trackDF.csv')
+dim(trackDF)
+# clear up 5.7 GB of space here
+allTracks <- 0
+```
+
+**And since I didn't store the track ID's in the lists/rows, I have to do it all over again.  Might as well add some features, like "popularity" of the song, while at it.**
+
+```{r}
+trackFrame <- data.frame(ids=c(), name=c(), popularity=c(),
+                         duration=c(), artistID=c(), artistName=c(),
+                         albumID=c(), albumName=c(), released=c())
+```
+```{r}
+auth <- get_auth()
+baseUrl <- 'https://api.spotify.com/v1/'
+track_endpt <- 'tracks?ids='
+comma <- '%2C'
+limit <- 50 #Spotify-imposed constraint
+```
+```{r}
+get_tracks_info <- function(IDvec) {
+  # This query uses comma-separated arrays of up to 50 track IDs per query
+  track_url <- paste0(baseUrl, track_endpt, glue_collapse(IDvec, sep=comma))
+  track_resp <- GET(track_url, add_headers(Authorization=auth))
+  return(track_resp)
+}
+
+alltracks <- tnames
+length(alltracks)
+# make sure not to dupe a bunch of API calls
+length(unique(alltracks))
+
+for (i in 1:ceiling(length(alltracks) / limit)) {
+  # monitor progress
+  if (i%%100==0) {print(i)}
+  
+  IDs <- alltracks[(i*limit-limit+1):(i*limit)]
+  res <- get_tracks_info(IDs)
+  # need to refresh auth code every hour
+  if (res$status_code == 401) {
+    # print failed query to redo it after dust settles
+    print(i)
+    print('reset auth key')
+    auth <- get_auth()
+  }
+  if (res$status_code == 200) {
+    res <- content(res)$tracks
+    for (j in 1:length(res)) {
+      t <- res[[j]]
+      feats <- list(ids=t$id, name=t$name, popularity=t$popularity, 
+                    duration=t$duration_ms, artistID=t$artists[[1]]$id, 
+                    artistName=t$artists[[1]]$name,
+                    albumID=t$album$id, albumName=t$album$name, 
+                    released=t$album$release_date)
+      # handle NAs so they don't stop the query loop
+      tryCatch(trackFrame <- rbind(trackFrame, feats))
+    }
+  }
+}
+#write.csv(trackFrame, 'trackFrame.csv')
+```
+```{r}
+repo <- get_tracks_info(tnames[1:2])
+length(repo$tracks)
+names(repo$tracks[[1]])
+```
+
+
+### Get audio features for 100 tracks at a clip  
+
+```{r}
+auth <- get_auth()
+baseUrl <- 'https://api.spotify.com/v1/'
+track_endpt <- 'audio-features?ids='
+comma <- '%2C'
+limit <- 100  #spotify api constraint
+
+```
+```{r}
+get_track_feats <- function(IDvec) {
+  # This query uses comma-separated arrays of up to 100 track IDs per query
+  track_url <- paste0(baseUrl, track_endpt, glue_collapse(IDvec, sep=comma))
+  track_resp <- GET(track_url, add_headers(Authorization=auth))
+  return(track_resp)
+}
+
+dfs <- data.frame()
+
+for (batch in 1:ceiling(length(alltracks) / limit)) {
+  # monitor progress
+  if (batch%%100==0) {print(batch)}
+  # collect batch results into this frame for much quicker performance
+  tempframe <- data.frame()
+  
+  IDs <- alltracks[(batch*limit-limit+1):(batch*limit)]
+
+  res <- get_track_feats(IDs)
+  if (res$status_code == 401) {
+    # print failed query to redo it after dust settles
+    print(batch)
+    print('reset auth key')
+    auth <- get_auth()
+  }
+  if (res$status_code == 200) {
+    res <- content(res)$audio_features
+    for (i in 1:length(res)) {
+      feats <- data.frame(res[[i]])
+      # handle NAs so they don't stop the query loop
+      tryCatch(tempframe <- rbind(tempframe, feats))
+    }
+    dfs <- rbind(dfs, tempframe)
+  }
+  
+}
+write.csv(dfs, 'songfeats.csv')
+```
+
+### possibly the last item to query for is artist info
+
+```{r}
+auth <- get_auth()
+baseUrl <- 'https://api.spotify.com/v1/'
+artist_endpt <- 'artists?ids='
+comma <- '%2C'
+limit <- 50  #spotify api constraint
+```
+```{r}
+get_artist_detes <- function(IDvec) {
+  # This query uses comma-separated arrays of up to 50 artist IDs per query
+  artist_url <- paste0(baseUrl, artist_endpt, glue_collapse(IDvec, sep=comma))
+  artist_resp <- GET(artist_url, add_headers(Authorization=auth))
+  return(artist_resp)
+}
+```
+```{r}
+artistDFs <- data.frame()
+
+allArtists <- unique(trackFrame$artistID)
+length(allArtists)
+```
+```{r}
+for (batch in 1:ceiling(length(allArtists) / limit)) {
+  # monitor progress
+  if (batch%%100==0) {print(batch)}
+  # collect batch results into this frame for much quicker performance
+  tempframe <- data.frame()
+  
+  IDs <- allArtists[(batch*limit-limit+1):(batch*limit)]
+  
+  res <- get_artist_detes(IDs)
+  if (res$status_code == 401) {
+    # print failed query to redo it after dust settles
+    print(batch)
+    print('reset auth key')
+    auth <- get_auth()
+  }
+  if (res$status_code == 200) {
+    res <- content(res)$artists
+    
+    for (i in 1:length(res)) {
+      artist <- res[[i]]
+      artfeats <- list(id=artist$id, name=artist$name,
+                       followers=artist$followers$total,
+                       popularity=artist$popularity,
+                       # collapse and glue lists, but add blank space to avoid NA problems in d.frame creation
+                       genres=glue_collapse(c(artist$genres, ' '), sep = ','))
+      
+      # handle NAs so they don't stop the query loop
+      tryCatch(tempframe <- rbind(tempframe, artfeats))
+    }
+    
+    artistDFs <- rbind(artistDFs, tempframe)
+  }
+  
+}
+#write.csv(artistDFs, 'artists.csv')
+```
+
+
