@@ -15,8 +15,8 @@ library(countrycode)
 ```
 
 ```{r}
-my_ID <- 'f319ab5bf1b64371b61a4818d0fd2b35'
-my_secret <- '7185d542af1a4755be71f2dfb1ade67d'
+my_ID <- 'xxxxxx'
+my_secret <- 'xxxxxxx'
 ```
 
 ```{r}
