@@ -1,9 +1,13 @@
 ---
-title: "EarthWave"
+title: "Spotify Data Getters"
 author: "Ethan Haley"
 date: "4/24/2021"
 output: html_document
 ---
+
+## This notebook has the code used for acquiring and organizing playlist-centric data from Spotify's API. 
+
+##### It's not meant to be executed as is, since the API calls take many hours to run, and require password authentication, and also take up a large amount of memory.  However, the final product of this code, namely the structured dataframes, is saved and accessible at the Github URL's shown at the end of each completed section. They were used to build a Neo4j database, using an accompanying Cypher script.
 
 ```{r setup, include=FALSE, warning=F}
 knitr::opts_chunk$set(echo = TRUE)
@@ -15,6 +19,7 @@ library(countrycode)
 ```
 
 ```{r}
+## spotify developer auth passwords
 my_ID <- 'xxxxxx'
 my_secret <- 'xxxxxxx'
 ```
@@ -58,7 +63,10 @@ for (i in content(cat2_resp)$categories$items) {
 cats <- data.frame(ID=cat_IDs, name=cat_names)
 cats <- unique(cats)
 cats
-write_csv(cats, 'spotifyCategories.csv')
+## Write it out:
+#write_csv(cats, 'spotifyCategories.csv')
+## Read it back in from Github later:
+# cats <- read_csv('https://raw.githubusercontent.com/ebhtra/msds-607/main/spotifyNeo4j/spotifyCategories.csv')
 ```
 
 #### Get all playlists from all countries 
@@ -126,7 +134,9 @@ parse_playlists <- function(playlists_content) {
 masterframe <- get_all_playlists(masterframe)
 tail(masterframe)
 ## save this part thru mid-Portugal, to avoid repeating
-write_csv(masterframe, 'masterPlaylist.csv')
+#write_csv(masterframe, 'masterPlaylist.csv')
+## Read it back in from Github later:
+# masterframe <- read_csv('https://raw.githubusercontent.com/ebhtra/msds-607/main/spotifyNeo4j/masterPlaylist.csv')
 ```
 
 ```{r}
@@ -151,6 +161,7 @@ masterframe %>%
 Sorry, Portugal.
 
 ```{r}
+# Convert 2-letter isocodes to country names
 code2country <- function(code) {
   codelist$country.name.en[which(codelist$iso2c == code)]
 }
@@ -203,7 +214,7 @@ get_playlist_details <- function(playlistID) {
 ```
 
 ```{r}
-#auth <- get_auth()
+auth <- get_auth()
 resps <- c()
 uID <- unique(masterframe$ID)
 pl <- uID[3226:length(uID)]
@@ -211,11 +222,13 @@ for (p in pl) {
   r <- get_playlist_details(p)
   if (r[[1]]$status_code == 401) {
     cat("STUCK ON ", p)
+    # print out the index that wasn't completed, and refresh auth
     get_auth()
   }
   resps <- c(resps, r)
 }
-save(resps, file='resps.RData')
+# This won't be read back in at any point, but I'm storing it for possible future uses:
+#save(resps, file='resps.RData')
 resps[5813]
 # clear space
 resps <- 0
@@ -269,11 +282,15 @@ PL_data <- data.frame(ids=ids, name=names, followers=follows, tracks=numtracks,
                       date=rep(as.Date.POSIXct(dates[1]), length(ids)),
                       collab=collaborative, description=description,
                       owner=owner, public=public)
-write.csv(PL_data, 'PLdata.csv')
+## Write it out:
+#write.csv(PL_data, 'PLdata.csv')
+## Read it in from Github:
+#PL_data <- read_csv('https://raw.githubusercontent.com/ebhtra/msds-607/main/spotifyNeo4j/PLdata.csv')
 head(PL_data,2)
 ```
 
 ```{r}
+# Keeping this chunk separate so as to avoid accidentally re-initializing results to empty
 PL_tracks <- c()
 ```
 
@@ -298,7 +315,10 @@ pldf$PLtracks <- PL_tracks
 dim(pldf)
 # R won't write a d.frame with a column of lists
 pldf$PLtracks <- as.character(pldf$PLtracks)
-write.csv(pldf, 'PLtracks.csv')
+## Write it out:
+#write.csv(pldf, 'PLtracks.csv')
+## Read it in from Github later:
+# PLtracks <- read_csv('https://raw.githubusercontent.com/ebhtra/msds-607/main/spotifyNeo4j/PLtracks.csv')
 ```
 
 
@@ -322,6 +342,7 @@ length(bigTotals)
 ### Need to deal with the large allTracks list
 
 ```{r}
+# Keeping this chunk separate so as to avoid accidentally re-initializing results to empty
 trackDF <- data.frame(name=c(), released=c(), artist=c(),
                       artistID=c(), albumID=c())
 ```
@@ -351,6 +372,7 @@ allTracks <- 0
 **And since I didn't store the track ID's in the lists/rows, I have to do it all over again.  Might as well add some features, like "popularity" of the song, while at it.**
 
 ```{r}
+# Keeping this chunk separate so as to avoid accidentally re-initializing results to empty
 trackFrame <- data.frame(ids=c(), name=c(), popularity=c(),
                          duration=c(), artistID=c(), artistName=c(),
                          albumID=c(), albumName=c(), released=c())
@@ -402,7 +424,23 @@ for (i in 1:ceiling(length(alltracks) / limit)) {
     }
   }
 }
+# To make the dates comparable, I'm just going to make every album 
+## with a year-only release be on the middle day of the year (july 2)
+fill_year <- function(str_date){
+  if (nchar(str_date) == 4){
+    return(paste0(str_date, '-07-02'))
+  } else {return(str_date)}
+}
+fullDates <- as.character(lapply(trackFrame$released, fill_year))
+fullDates[1:3]
+trackFrame$released <- fullDates
+## Write it out:
 #write.csv(trackFrame, 'trackFrame.csv')
+## Read it back in from Github later:
+# trackFrame <- read_csv('https://raw.githubusercontent.com/ebhtra/msds-607/main/spotifyNeo4j/trackFrame.csv')
+dim(trackFrame)
+dim(drop_na(trackFrame))
+
 ```
 ```{r}
 repo <- get_tracks_info(tnames[1:2])
@@ -457,7 +495,9 @@ for (batch in 1:ceiling(length(alltracks) / limit)) {
   }
   
 }
-write.csv(dfs, 'songfeats.csv')
+#write.csv(dfs, 'songfeats.csv')
+## Read it back in later from Github:
+# songfeats <- read_csv('https://raw.githubusercontent.com/ebhtra/msds-607/main/spotifyNeo4j/songfeats.csv' )
 ```
 
 ### possibly the last item to query for is artist info
@@ -479,7 +519,7 @@ get_artist_detes <- function(IDvec) {
 ```
 ```{r}
 artistDFs <- data.frame()
-
+# Keeping this chunk separate so as to avoid accidentally re-initializing results to empty
 allArtists <- unique(trackFrame$artistID)
 length(allArtists)
 ```
@@ -518,7 +558,112 @@ for (batch in 1:ceiling(length(allArtists) / limit)) {
   }
   
 }
+## Write it out:
 #write.csv(artistDFs, 'artists.csv')
+## Read it back in later from Github:
+# artistDFs <- read_csv('https://raw.githubusercontent.com/ebhtra/msds-607/main/spotifyNeo4j/artists.csv')
 ```
 
+#### Merge playlist df's to add all the tracks in each PL to all the details about that PL.  
+
+```{r}
+PLs <- merge(masterframe, pldf, by.x = 'ID', by.y = 'PLid')
+dim(PLs)
+names(PLs)
+```
+
+#### Now merge again with PL_data d.f, which has the same playlists, but also num_followers and date of the snapshot
+
+```{r}
+trimmed_PL_data <- select(PL_data, c(ids, followers, date))
+PLs <- merge(PLs, trimmed_PL_data, by.x = 'ID', by.y = 'ids')
+dim(PLs)
+names(PLs)
+## Write it out:
+#write_csv(PLs, 'PLs.csv')
+## Read it back in from Github later:
+# PLs <- read_csv('https://raw.githubusercontent.com/ebhtra/msds-607/main/spotifyNeo4j/PLs.csv')
+```
+
+#### That's great to have all the data in one frame, but at 500MB it's too big to push to github.
+##### Since most of it is redundant (~5K playlists total, crossed with ~50 countries each playlist), the countries should be separated out and re-connected in Neo4j, for present purposes.  
+
+```{r}
+# so we need a frame with all 5000 playlists and their 50 tracks each, and then another frame for the playlists and their countries.
+countryPL <- select(PLs, c(ID, country))
+plids <- unique(countryPL$ID)
+plidlist <- list()
+for (plid in plids){
+  plidlist$plid <- c()
+}
+for (i in 1:nrow(countryPL)){
+  plidlist[[countryPL$ID[i]]]<- c(plidlist[[countryPL$ID[i]]], countryPL$country[i])
+}
+plidlist <- lapply(plidlist, unique)
+plidlist <- lapply(plidlist, function(l){glue_collapse(l,sep = '|')})
+ids <- names(plidlist)
+countries <- c()
+for (i in 1:length(ids)) {
+  countries <- c(countries, plidlist[[ids[i]]])
+}
+plidframe <- data.frame('id'=ids, 'countries'=countries)
+head(plidframe)
+```
+#### 3-way merge now, to make the full frame
+
+```{r}
+PLs <- merge(pldf, PL_data, by.x = 'PLid', by.y = 'ids')
+PLs <- merge(PLs, plidframe, by.x = 'PLid', by.y = 'id')
+dim(PLs)
+tail(PLs, 2)
+#write_csv(PLs, 'PLs.csv')
+## Read it back in from Github later:
+# PLs <- read_csv('https://raw.githubusercontent.com/ebhtra/msds-607/main/spotifyNeo4j/PLs.csv')
+```
+### Neo4j is a little short on the string processing tools necessary to split those vectors of strings into a list of strings.  May need to make each vector into one big string.  
+
+```{r}
+collapseTracks <- function(trackvec) {
+  str_remove(trackvec, 'c\\(') %>%
+    str_remove_all('\\\"') %>%
+    str_remove('\\\n\\)') %>%
+    str_remove_all('\\s')
+}
+collapseTracks(PLs$PLtracks[1])
+```
+
+```{r}
+oneStringTracks <- lapply(PLs$PLtracks, collapseTracks)
+PLs$PLtracks <- unlist(oneStringTracks)
+#write_csv(PLs, 'PLs.csv')
+## Read it back in from Github later:
+# PLs <- read_csv('https://raw.githubusercontent.com/ebhtra/msds-607/main/spotifyNeo4j/PLs.csv')
+
+```
+
+#### Missed attaching the playlist genre labels (the original query seed, with country), so make separate frame to add  
+
+```{r}
+PLgenres <- data.frame(distinct(masterframe, ID, genre))
+dim(PLgenres)
+head(PLgenres, 2)
+```
+So with 5700 unique playlists, there are 2400 multiple genres
+
+```{r}
+#write.csv(PLgenres, 'PLgenres.csv')
+## Read it back in from Github later:
+# PLgenres <- read_csv('https://raw.githubusercontent.com/ebhtra/msds-607/main/spotifyNeo4j/PLgenres.csv')
+```
+
+Need to push a country code/name frame to github too
+
+```{r}
+codes <- unique(masterframe$country)
+cnames <- as.character(lapply(codes, code2country))
+countryCodeNames <- data.frame('codes'=codes, 'names'=cnames)
+#write.csv(countryCodeNames, 'countryCodeNames.csv')
+## Read it back in from Github later:
+# countryCodeNames <- read_csv(https://raw.githubusercontent.com/ebhtra/msds-607/main/spotifyNeo4j/countryCodeNames.csv)
+```
 
