@@ -1,0 +1,143 @@
+
+// Find 'M' shaped connections to discover mixed playlists
+//
+//    PL   PL
+//   T  T T  T
+//  A    A    A
+//
+MATCH (a1:Artist {name: "Chuck Berry"})<-[:PERFORMED_BY]-(t1:Track)<-[:INCLUDES]-(pl1:Playlist)-[:INCLUDES]->(t2:Track)-[:PERFORMED_BY]->(a2:Artist)<-[:PERFORMED_BY]-(t3:Track)<-[:INCLUDES]-(pl2:Playlist)-[:INCLUDES]->(t4:Track)-[:PERFORMED_BY]->(a3:Artist {name: "Eminem"})
+WHERE pl1 <> pl2
+RETURN *
+LIMIT 50;
+
+// Sample artist whose graph is interesting
+MATCH (a:Artist {name:'Kayan.a'})
+RETURN a;
+
+// All my repect to Algeria and Bulgaria.  Might as well check the other end of the list.
+MATCH (c:Country)<-[:PLAYS_IN]-(pl:Playlist)-[:INCLUDES]->(t:Track)
+WITH c.name AS country, AVG(t.popularity) AS poppy, 
+COUNT(DISTINCT pl) AS playlists WHERE playlists > 25
+RETURN country, playlists, poppy
+ORDER BY poppy DESC
+LIMIT 50;
+// Places that rely on tourism need to play popular music?
+
+// In which countries is less popular music more popular (so I can plan on moving there)?
+MATCH (c:Country)<-[:PLAYS_IN]-(pl:Playlist)-[:INCLUDES]->(t:Track)
+WITH c.name AS country, AVG(t.popularity) AS poppy, 
+COUNT(DISTINCT pl) AS playlists WHERE playlists > 25
+RETURN country, playlists, poppy
+ORDER BY poppy
+LIMIT 50;
+
+// Which Artists play the most Genres?
+MATCH (a:Artist)-[:PLAYS_GENRE]->(g:Genre)
+RETURN a.name, COUNT(g) AS number, COLLECT(g.name) AS genres
+ORDER BY number DESC
+LIMIT 50;
+// Without recognizing most of those genres, I admit to wanting to search them now (Deerhunter plays "nu gaze" and also "shoegaze"--Will my "New Grove Dictionary of Music" be able to explain the difference between those, anywhere in its 20 volumes?)
+
+// Inspect the key signatures of "Love & Opera", which has 25 tracks, to see why they look so similar to this method
+MATCH (pl:Playlist {name:"Love & Opera"})-[:INCLUDES]->(t:Track)
+RETURN t.`key` + ' ' + t.major AS key_sig;
+// The method has value: All but one of these opera tracks are in a major key, which would have me switching playlists soon. 
+
+// One point: The method is rough.  B minor maps as only 1 away from C major (11 vs 12) even though they're further apart musically than C minor and E-flat major (0 vs 15).  Nevertheless, these playlists sound more interesting to me than the ones returned by the bottom of the same variance ranking: 
+MATCH (plg:PLGenre)<-[:OF_GENRE]-(pl:Playlist)-[:INCLUDES]->(t:Track) WHERE EXISTS(t.`key`)
+WITH pl, t, plg
+RETURN pl.name AS playlist, STDEV(toInteger(t.`key`) + 12 * toInteger(t.major)) AS key_variety, pl.numTracks AS tracks, pl.description AS description, plg.name AS genre
+ORDER BY key_variety
+LIMIT 25;
+
+// That shows the failure of this method: There are only 24 possible key signatures, so shorter Playlists will show higher variety than longer ones.  Try variance instead:  
+MATCH (plg:PLGenre)<-[:OF_GENRE]-(pl:Playlist)-[:INCLUDES]->(t:Track) WHERE EXISTS(t.`key`)
+WITH pl, t, plg
+RETURN pl.name AS playlist, STDEV(toInteger(t.`key`) + 12 * toInteger(t.major)) AS key_variety, pl.numTracks AS tracks, pl.description AS description, plg.name AS genre
+ORDER BY key_variety DESC
+LIMIT 25;
+
+
+//Might as well see which lists have the least variety of keys too
+MATCH (plg:PLGenre)<-[:OF_GENRE]-(pl:Playlist)-[:INCLUDES]->(t:Track) WHERE EXISTS(t.`key`)
+WITH pl, t, plg
+RETURN pl.name AS playlist, 1.0 * COUNT(DISTINCT t.`key`+' '+ t.major) / COUNT(t) AS key_variety, pl.numTracks AS tracks, pl.description AS description, plg.name AS genre
+ORDER BY key_variety
+LIMIT 25;
+
+// Listening to songs in the same key repeatedly can dull the enjoyment.  Which playlists have the most variety of keys?
+MATCH (plg:PLGenre)<-[:OF_GENRE]-(pl:Playlist)-[:INCLUDES]->(t:Track)
+WITH pl, t, plg
+RETURN pl.name AS playlist, 1.0 * COUNT(DISTINCT t.`key`+' '+ t.major) / pl.numTracks AS key_variety, pl.numTracks AS tracks, pl.description AS description, plg.name AS genre
+ORDER BY key_variety DESC
+LIMIT 25;
+
+// Which keys are most common?
+MATCH (t:Track)
+WITH (CASE WHEN t.`key` = 0 THEN 'C'
+        WHEN t.`key` = 1 THEN 'D-flat'
+        WHEN t.`key` = 2 THEN 'D'
+        WHEN t.`key` = 3 THEN 'E-flat'
+        WHEN t.`key` = 4 THEN 'E'
+        WHEN t.`key` = 5 THEN 'F'
+        WHEN t.`key` = 6 THEN 'F-sharp'
+        WHEN t.`key` = 7 THEN 'G'
+        WHEN t.`key` = 8 THEN 'A-flat'
+        WHEN t.`key` = 9 THEN 'A'
+        WHEN t.`key` = 10 THEN 'B-flat'
+        WHEN t.`key` = 11 THEN 'B' ELSE ' ' END)
+        + ' ' 
+        + CASE WHEN t.major = 1 THEN 'major' 
+            ELSE 'minor' END AS key_sig
+RETURN key_sig, COUNT(*) AS tracks
+ORDER BY tracks DESC;
+
+// How recent are the songs on these playlists?
+// In order to weight this by frequency of playtime, start search at PLs
+MATCH (pl:Playlist)-[:INCLUDES]-()-[:ON_ALBUM]->(a:Album)
+WITH a 
+ORDER BY a.released
+RETURN COLLECT(a.released)[COUNT(a)/2] AS median_date;
+
+// Who are the owners/creators of these 5750 Playlists?
+MATCH ()-[:OWNED_BY]->(u:User)
+RETURN u.name AS owner, COUNT(u) AS playlists
+ORDER BY playlists DESC;
+
+// How many Playlists of any type play in each country?
+MATCH (pl:Playlist)-[:PLAYS_IN]->(c:Country)
+RETURN c.name as country, COUNT(pl) AS playlists
+ORDER BY playlists DESC;
+
+// In which countries do playlists in the edm_dance genre play the most?
+MATCH (plg:PLGenre)<-[:OF_GENRE]-(p:Playlist)-[:PLAYS_IN]->(c:Country)
+WHERE plg.name='edm_dance'
+RETURN c.name AS country, count(*) AS edm_lists
+ORDER BY edm_lists DESC;
+
+// Average loudness of all Tracks that have a loudness property
+MATCH (t:Track) WHERE EXISTS(t.loudness) 
+RETURN AVG(t.loudness) AS avg_dBs;
+
+// Median loudness of all Tracks that have a loudness property
+MATCH (t:Track) WHERE EXISTS(t.loudness) 
+WITH t.loudness AS dBs 
+RETURN percentileDisc(dBs, 0.5) AS median_dBs;
+
+// list all the playlist genres, ordered by how many countries their playlists play in
+MATCH (plg:PLGenre)<-[:OF_GENRE]-()-[:PLAYS_IN]->(c:Country)
+RETURN plg.name AS playlist_genre, COUNT(DISTINCT(c)) AS countries
+ORDER BY countries DESC;
+// That's a little disturbing to me, to see "caribbean" genre at the bottom of the table.
+
+// check out graphically 100 (preset browser limit, could be changed if desired) playlists in the edm_dance genre
+MATCH (plg:PLGenre) WHERE plg.name='edm_dance' RETURN plg;
+
+// Remove the empty Genre node
+MATCH (n)
+WHERE ID(n) = 4
+DETACH DELETE n;
+
+
+
+
